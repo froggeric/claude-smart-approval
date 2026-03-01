@@ -205,7 +205,11 @@ parse_compound() {
     # Recursively expand bash -c / sh -c
     if [[ "$line" =~ ^(env[[:space:]]+)?(/[^[:space:]]*/)?((ba)?sh)[[:space:]]+-c[[:space:]]*[\'\"](.*)[\'\"]$ ]]; then
       debug "Recursing into shell -c: ${BASH_REMATCH[5]}"
-      parse_compound "${BASH_REMATCH[5]}"
+      if ! parse_compound "${BASH_REMATCH[5]}"; then
+        # Inner parse failed — emit wrapper as-is so it gets checked
+        # against allow/deny lists (and likely falls through)
+        printf '%s\0' "$line"
+      fi
     else
       printf '%s\0' "$line"
     fi

@@ -133,6 +133,15 @@ load test_helper
   assert_denied
 }
 
+# -- bash -c recursion failure must not silently approve --
+
+@test "sec: bash -c with unparseable inner command falls through" {
+  # If inner parse fails and the segment is silently dropped, only 'ls' remains
+  # and would be approved. The fix emits the wrapper as-is, which is not allowed.
+  run_hook "bash -c '<<<invalid syntax>>>' && ls" '["Bash(ls *)"]'
+  assert_fallthrough
+}
+
 # -- eval / source --
 
 @test "sec: eval with dangerous command falls through (not in allow list)" {
