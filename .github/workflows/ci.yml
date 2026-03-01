@@ -8,8 +8,7 @@ jobs:
       - uses: mfinelli/setup-shfmt@v2
       - name: Install dependencies
         run: |
-          sudo apt-get update && sudo apt-get install -y jq
-          npm install -g bats
+          sudo apt-get update && sudo apt-get install -y jq bats
       - name: ShellCheck
         run: shellcheck -x approve-compound-bash.sh
       - name: Tests
