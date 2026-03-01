@@ -1,0 +1,11 @@
+{
+  "name": "auto-approve-compound-bash",
+  "description": "Auto-approve compound Bash commands (pipes, chains, subshells) by parsing each segment via shfmt AST and checking against allow/deny lists",
+  "version": "1.0.0",
+  "author": {
+    "name": "Ory Band"
+  },
+  "repository": "https://github.com/oryband/claude-code-auto-approve",
+  "license": "MIT",
+  "keywords": ["hooks", "bash", "permissions", "compound-commands", "auto-approve"]
+}
