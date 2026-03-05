@@ -85,6 +85,16 @@ bats test/
 
 **`bash -c` on simple path**: `bash -c 'echo hello'` has no shell metacharacters, so it takes the fast path and matches against the prefix list as-is without recursing into the inner command. Don't add `bash`, `sh`, or `zsh` to your allow list.
 
+## Design decisions
+
+**Why this hook exists.** Claude Code evaluates `Bash(cmd *)` permissions against the full command string. Compound commands like `ls | grep foo` or `nvm use && yarn test` don't match individual prefix rules, so users get prompted even when every sub-command is already allowed. As of March 2026, this remains an [open](https://github.com/anthropics/claude-code/issues/29491) [issue](https://github.com/anthropics/claude-code/issues/4236) with no native fix.
+
+**Why bash + shfmt + jq.** Claude Code plugins are expected to be [transparent and auditable](https://code.claude.com/docs/en/discover-plugins) — compiled binaries and obfuscated code are explicitly discouraged. A bash script with well-known dependencies meets this standard. shfmt and jq are both small, fast, and available via standard package managers.
+
+**Why shfmt for parsing.** [shfmt](https://github.com/mvdan/sh) (`mvdan.cc/sh`) is the most complete and battle-tested bash parser available. Its JSON AST output covers all compound constructs: pipes, chains, subshells, command/process substitution, control flow, and declarations. Alternatives like [tree-sitter-bash](https://github.com/tree-sitter/tree-sitter-bash) are designed for editor highlighting rather than semantic analysis, and hand-written parsers (as used by [Dippy](https://github.com/ldayton/Dippy)) trade external dependencies for ongoing maintenance burden and potential correctness gaps.
+
+**Why not a compiled binary.** A Go rewrite using `mvdan.cc/sh` as a library would eliminate the shfmt and jq subprocesses, but would produce an opaque binary that conflicts with the plugin ecosystem's source-readability expectations. The current approach adds ~100–150ms of subprocess overhead per compound command, well within Claude Code's hook timeout defaults.
+
 ## Credits
 
 Based on [claude-code-plus](https://github.com/AbdelrahmanHafez/claude-code-plus) (MIT). Key differences: deny list support, active deny for compounds, fast path for simple commands, falls through on empty parse (the original approves), settings layer support, env var stripping, and a test suite.
