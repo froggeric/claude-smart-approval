@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$PLUGIN_DIR\"/approve-compound-bash.sh",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/approve-compound-bash.sh",
             "timeout": 3
           }
         ]
