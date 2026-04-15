@@ -79,12 +79,14 @@ score_run() {
 # --- Prompt substitution ---
 build_eval_prompt() {
   local template="$1" command="$2" cwd="$3" sub_commands="$4"
-  sed \
-    -e "s|{{COMMAND}}|${command}|g" \
-    -e "s|{{CWD}}|${cwd}|g" \
-    -e "s|{{SUB_COMMANDS}}|${sub_commands}|g" \
-    -e "s|{{DENY_LIST}}||g" \
-    <<< "$template"
+  # Use bash parameter expansion — replacement is literal, no escaping needed.
+  # sed is unsafe here because command text can contain |, &, \ etc.
+  local result="$template"
+  result="${result//\{\{COMMAND\}\}/${command}}"
+  result="${result//\{\{CWD\}\}/${cwd}}"
+  result="${result//\{\{SUB_COMMANDS\}\}/${sub_commands}}"
+  result="${result//\{\{DENY_LIST\}\}/}"
+  printf '%s' "$result"
 }
 
 # --- Response parsing ---
