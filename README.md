@@ -10,7 +10,7 @@ This hook parses compound commands into segments and checks each one.
 
 ## Install
 
-Requires **bash 4.3+** (auto-detected; re-execs with Homebrew bash on macOS if needed), [shfmt](https://github.com/mvdan/sh), and [jq](https://jqlang.github.io/jq/).
+Requires **bash 4.3+** (auto-detected; re-execs with Homebrew bash on macOS if needed), [shfmt](https://github.com/mvdan/sh), [jq](https://jqlang.github.io/jq/), and optionally the [claude CLI](https://docs.anthropic.com/en/docs/claude-code) for smart approval.
 
 ```bash
 brew install shfmt jq
@@ -26,7 +26,7 @@ Copy the script somewhere and register it in `~/.claude/settings.json`:
       "hooks": [{
         "type": "command",
         "command": "~/.claude/scripts/approve-compound-bash.sh",
-        "timeout": 3
+        "timeout": 30
       }]
     }]
   },
@@ -57,6 +57,28 @@ Three outcomes:
 
 On any error the hook falls through. It never approves something it can't fully analyze.
 
+## Smart approval (Stage 2)
+
+When Stage 1 falls through (unknown command, not in allow or deny lists), the hook can optionally evaluate the command using a headless `claude -p` instance. This is useful for long autonomous sessions where prompting the user isn't practical.
+
+**How it works:** The unknown command is sent to `claude -p --model haiku` with a security evaluation prompt. The AI decides whether to approve, deny, or ask (escalate to you with its analysis). Approved patterns are optionally auto-learned to your settings files so future matches are instant.
+
+**Configuration (environment variables):**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SMART_APPROVE_ENABLED` | `true` | Enable/disable smart approval |
+| `SMART_APPROVE_MODEL` | `haiku` | Model for evaluation (fast/cheap recommended) |
+| `SMART_APPROVE_AUTO_LEARN` | `true` | Auto-learn approved patterns to settings |
+| `SMART_APPROVE_TIMEOUT` | `25` | Timeout in seconds for the claude call |
+| `CLAUDE_CMD` | `claude` | Path to claude CLI binary |
+
+**Security:** The evaluation prompt explicitly treats the command content as untrusted input. The AI is instructed to evaluate safety, not to follow instructions embedded in the command.
+
+**Performance:** ~8–13 seconds per evaluation with haiku. The hook timeout is set to 30s to accommodate this. Set `SMART_APPROVE_ENABLED=false` to disable.
+
+**Provider-agnostic:** Uses `claude -p` which inherits your configured provider (z.ai, ollama, etc.), not the Anthropic API directly.
+
 ## Debugging
 
 Extract sub-commands from a compound command:
@@ -75,7 +97,7 @@ echo '{"tool_input":{"command":"ls | grep foo"}}' | ./approve-compound-bash.sh -
 
 ## Testing
 
-97 tests across parsing, permissions, and security. Requires [BATS](https://bats-core.readthedocs.io/).
+145 tests across parsing, permissions, security, smart approval, auto-learn, and integration. Requires [BATS](https://bats-core.readthedocs.io/).
 
 ```bash
 bats test/

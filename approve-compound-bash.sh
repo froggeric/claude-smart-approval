@@ -297,11 +297,87 @@ any_denied() {
 }
 
 # ---------------------------------------------------------------------------
+# Stage 2: Smart approval via AI evaluation (smart-approve.sh + auto-learn.sh)
+# ---------------------------------------------------------------------------
+
+# Evaluate an unknown command via AI. On success, outputs hook JSON and exits.
+# On failure (or disabled), returns 1 so the caller can fall through.
+# NOTE: This function exits the script on allow/deny/ask decisions — same
+# pattern as approve() and deny() above.
+run_smart_approve() {
+  local command="$1"
+  local cwd="$2"
+  local -n __smart_approve_cmds=$3
+
+  [[ "${SMART_APPROVE_ENABLED:-true}" != "true" ]] && return 1
+
+  local script_dir
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+  local smart_output
+  if [[ "${#denied_prefixes[@]}" -gt 0 ]]; then
+    smart_output=$(
+      { printf '%s\n' "${__smart_approve_cmds[@]}"; echo "---DENY_LIST---"; printf '%s\n' "${denied_prefixes[@]}"; } | \
+        "$script_dir/smart-approve.sh" \
+          --command "$command" \
+          --cwd "$cwd" 2>/dev/null
+    ) || true
+  else
+    smart_output=$(printf '%s\n' "${__smart_approve_cmds[@]}" | \
+      "$script_dir/smart-approve.sh" \
+        --command "$command" \
+        --cwd "$cwd" 2>/dev/null) || true
+  fi
+
+  [[ -z "$smart_output" ]] && return 1
+
+  # Parse output once into an array (avoid 4 separate pipelines)
+  local -a output_lines=()
+  while IFS= read -r line; do
+    output_lines+=("$line")
+  done <<< "$smart_output"
+
+  local first_line="${output_lines[0]}"
+
+  if [[ "$first_line" == *'"permissionDecision":"allow"'* ]]; then
+    printf '%s\n' "$first_line"
+
+    # Auto-learn the pattern (if enabled)
+    if [[ "${SMART_APPROVE_AUTO_LEARN:-true}" == "true" ]]; then
+      local pattern="" scope=""
+      for line in "${output_lines[@]:1}"; do
+        case "$line" in
+          AUTO_LEARN_PATTERN=*) pattern="${line#AUTO_LEARN_PATTERN=}" ;;
+          AUTO_LEARN_SCOPE=*) scope="${line#AUTO_LEARN_SCOPE=}" ;;
+        esac
+      done
+      if [[ -n "$pattern" ]]; then
+        local git_root
+        git_root=$(find_git_root 2>/dev/null || true)
+        "$script_dir/auto-learn.sh" \
+          --pattern "$pattern" \
+          --scope "${scope:-project}" \
+          --root "$git_root" &>/dev/null || true
+      fi
+    fi
+    exit 0
+  elif [[ "$first_line" == *'"permissionDecision":"deny"'* ]]; then
+    printf '%s\n' "$first_line" >&2
+    exit 2
+  elif [[ "$first_line" == *'"permissionDecision":"ask"'* ]]; then
+    printf '%s\n' "$first_line"
+    exit 0
+  fi
+
+  return 1
+}
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
 main() {
-  local permissions_json="" deny_json="" mode="hook"
+  local permissions_json="" deny_json="" mode="hook" cwd=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -368,6 +444,10 @@ main() {
   if ! needs_compound_parse "$command"; then
     debug "Simple command"
     is_allowed "$command" && approve
+    # Stage 2: Smart approval for unknown simple commands
+    cwd=$(jq -r '.cwd // empty' <<< "$input")
+    local -a simple_cmds=("$command")
+    run_smart_approve "$command" "$cwd" simple_cmds
     exit 0
   fi
 
@@ -382,9 +462,13 @@ main() {
 
   all_allowed extracted_commands && approve
 
-  # Not all approved: actively deny if any segment is in the deny list,
-  # otherwise fall through to Claude Code's native permission prompt.
+  # Not all approved: actively deny if any segment is in the deny list.
   any_denied extracted_commands && deny "Compound command contains a denied sub-command"
+
+  # Stage 2: Smart approval for unknown compound commands
+  cwd=$(jq -r '.cwd // empty' <<< "$input")
+  run_smart_approve "$command" "$cwd" extracted_commands
+
   exit 0
 }
 

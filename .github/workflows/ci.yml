@@ -10,6 +10,6 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y jq bats
       - name: ShellCheck
-        run: shellcheck -x approve-compound-bash.sh
+        run: shellcheck -x approve-compound-bash.sh smart-approve.sh auto-learn.sh
       - name: Tests
         run: bats test/

@@ -60,11 +60,12 @@ run_hook() {
   local deny="${3:-[]}"
   local json
   json=$(jq -n --arg cmd "$command" '{"tool_input":{"command":$cmd}}')
+  # Existing tests expect Stage 1 only — disable smart approval by default
   if [[ "$deny" == "[]" ]]; then
-    run bash -c 'printf "%s" "$1" | "$2" --permissions "$3"' \
+    SMART_APPROVE_ENABLED=false run bash -c 'printf "%s" "$1" | "$2" --permissions "$3"' \
       _ "$json" "$HOOK_SCRIPT" "$allow"
   else
-    run bash -c 'printf "%s" "$1" | "$2" --permissions "$3" --deny "$4"' \
+    SMART_APPROVE_ENABLED=false run bash -c 'printf "%s" "$1" | "$2" --permissions "$3" --deny "$4"' \
       _ "$json" "$HOOK_SCRIPT" "$allow" "$deny"
   fi
 }
@@ -95,4 +96,54 @@ assert_denied() {
     echo "# expected DENY (exit 2), got exit $status with output: $output" >&3
     return 1
   }
+}
+
+# ---------------------------------------------------------------------------
+# Smart approval helpers
+# ---------------------------------------------------------------------------
+
+# Create a mock claude command that returns a predefined response.
+# Uses environment variable to pass response — avoids heredoc expansion issues.
+# Registers mock path for automatic cleanup in teardown.
+# Returns: path to mock script
+MOCK_FILES=()
+
+create_mock_claude() {
+  local mock
+  mock=$(mktemp)
+  chmod +x "$mock"
+  # Write mock script using quoted heredoc to prevent any shell expansion.
+  # The response is passed via MOCK_RESPONSE env var at execution time.
+  cat > "$mock" <<'MOCKEOF'
+#!/usr/bin/env bash
+printf '%s' "$MOCK_RESPONSE"
+MOCKEOF
+  MOCK_FILES+=("$mock")
+  printf '%s' "$mock"
+}
+
+cleanup_mocks() {
+  for f in "${MOCK_FILES[@]}"; do
+    rm -f "$f" 2>/dev/null || true
+  done
+  MOCK_FILES=()
+}
+
+# Run the full hook with smart approval enabled and a mocked claude.
+# $1 = command, $2 = allow JSON, $3 = deny JSON (optional), $4 = mock response
+run_hook_smart() {
+  local command="$1"
+  local allow="${2:-[]}"
+  local deny="${3:-[]}"
+  local mock_response="$4"
+  local mock_cmd
+  mock_cmd=$(create_mock_claude "$mock_response")
+
+  local json
+  json=$(jq -n --arg cmd "$command" '{"tool_input":{"command":$cmd}}')
+
+  SMART_APPROVE_ENABLED=true SMART_APPROVE_AUTO_LEARN=false \
+  CLAUDE_CMD="$mock_cmd" MOCK_RESPONSE="$mock_response" \
+  run bash -c 'printf "%s" "$1" | "$2" --permissions "$3" --deny "$4"' \
+    _ "$json" "$HOOK_SCRIPT" "$allow" "$deny"
 }
