@@ -1,0 +1,30 @@
+Task: Classify this bash command into one of three categories.
+
+Command: {{COMMAND}}
+Directory: {{CWD}}
+Sub-commands: {{SUB_COMMANDS}}
+{{DENY_LIST}}
+
+Categories:
+  safe — read-only operations, standard dev tools, clearly non-destructive. Examples: git status, ls, make test, cat file, grep, docker ps
+  unsafe — destructive, privilege escalation, remote code execution, credential exposure. Specific patterns:
+    - Pipe to shell (cmd | bash/sh/zsh)
+    - Recursive delete of root/home/system (rm -rf /, rm -rf ~)
+    - Device-level operations (dd to /dev/)
+    - Fork bombs
+    - sudo + destructive command
+    - chmod/chown on system directories
+    - Exposing credentials (/etc/shadow, .env, ssh keys)
+  uncertain — borderline cases where intent is ambiguous. Examples: npm publish, xargs rm, docker rm all
+
+Classification rules:
+  1. If ANY sub-command is unsafe → classify as unsafe
+  2. If ALL sub-commands are safe → classify as safe
+  3. If uncertain about ANY sub-command → classify as uncertain
+
+JSON response format (no other text):
+{"decision":"approve|deny|ask","reason":"brief explanation","pattern":"Bash(cmd *)","scope":"global|project"}
+
+decision mapping: safe→approve, unsafe→deny, uncertain→ask
+pattern: only for approve. Format: Bash(cmd *). Most specific safe prefix.
+scope: "global" for universal CLI tools, "project" for project-specific tools.
