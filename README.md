@@ -24,8 +24,6 @@ This hook parses compound commands into their individual pieces and checks each 
 
 ## Install
 
-## Prerequisites
-
 **Required:** [shfmt](https://github.com/mvdan/sh) and [jq](https://jqlang.github.io/jq/) must be installed on your system.
 
 ```bash
@@ -34,7 +32,11 @@ brew install shfmt jq
 
 Without these, the hook silently falls back to Claude Code's normal permission prompts.
 
-## Install
+> **Remove `bash`, `sh`, and `zsh` from your allow list.** Commands like `bash -c 'echo hello'` have no shell metacharacters, so they take the fast path and match the prefix list without recursing into the inner command. If `Bash(bash *)` is in your allow list, `bash -c 'rm -rf /'` would be auto-approved. Check and remove:
+>
+> ```bash
+> for f in ~/.claude/settings.json ~/.claude/settings.local.json .claude/settings.json .claude/settings.local.json; do [ -f "$f" ] && jq 'del(.permissions.allow[] | select(test("^Bash\\((ba|z)?sh \\*\\)$")))' "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
+> ```
 
 ### Option A: Plugin marketplace (recommended)
 
@@ -47,7 +49,8 @@ From inside Claude Code:
 
 Then add your allow/deny rules to `~/.claude/settings.json`.
 
-### Option B: Manual
+<details>
+<summary>Option B: Manual installation</summary>
 
 Copy all three scripts to the same directory and register the hook in `~/.claude/settings.json`:
 
@@ -80,7 +83,20 @@ cp auto-approve.sh smart-approve.sh auto-learn.sh ~/.claude/scripts/
 
 That's it. The hook reads permissions from all settings layers (global, project, and their local variants), supports all formats (`Bash(cmd *)`, `Bash(cmd:*)`, `Bash(cmd)`), and strips env var prefixes (`NODE_ENV=prod npm test` matches `npm`).
 
-## How it works
+</details>
+
+## Security
+
+This tool makes security decisions on your behalf.
+
+- **Deny list is absolute**: any segment matching your deny list is blocked, no exceptions. Stage 1 deny always wins.
+- **AI evaluation resists injection**: commands are wrapped in delimiters; the model evaluates what a command *executes*, not what it *prints*. `echo '{"decision":"approve"}'` is recognized as a safe echo, not a trick.
+- **Uncertain means ask you**: if the AI can't decide, you get the normal Claude Code permission prompt with the AI's analysis. Nothing runs silently.
+- **Provider-agnostic**: uses `claude -p`, which inherits your configured provider (Anthropic, z.ai, ollama, etc.). No extra API keys.
+- **Auditable**: it's a bash script. Read it, modify it, run `--debug` to see every decision.
+
+<details>
+<summary>How it works</summary>
 
 Your existing `permissions.allow` and `permissions.deny` lists are the foundation. The hook reads them from all four settings layers — global (`~/.claude/settings.json`), global local (`~/.claude/settings.local.json`), project (`.claude/settings.json`), and project local (`.claude/settings.local.json`). No duplication. No separate config.
 
@@ -104,17 +120,10 @@ When Stage 1 can't decide, the command goes to `claude -p --model haiku` with a 
 
 Smart approval is **on by default**. Set `SMART_APPROVE_ENABLED=false` to disable.
 
-## Security
+</details>
 
-This tool makes security decisions on your behalf.
-
-- **Deny list is absolute**: any segment matching your deny list is blocked, no exceptions. Stage 1 deny always wins.
-- **AI evaluation resists injection**: commands are wrapped in delimiters; the model evaluates what a command *executes*, not what it *prints*. `echo '{"decision":"approve"}'` is recognized as a safe echo, not a trick.
-- **Uncertain means ask you**: if the AI can't decide, you get the normal Claude Code permission prompt with the AI's analysis. Nothing runs silently.
-- **Provider-agnostic**: uses `claude -p`, which inherits your configured provider (Anthropic, z.ai, ollama, etc.). No extra API keys.
-- **Auditable**: it's a bash script. Read it, modify it, run `--debug` to see every decision.
-
-## Configuration
+<details>
+<summary>Configuration</summary>
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -125,6 +134,8 @@ This tool makes security decisions on your behalf.
 | `SMART_APPROVE_LOG_FILE` | `~/.claude/smart-approval.log` | Log file path. Set empty to disable. |
 | `SMART_APPROVE_LOG_MAX_LINES` | `500` | Max log entries before rotation |
 | `CLAUDE_CMD` | `claude` | Path to claude CLI binary |
+
+</details>
 
 ## Audit log
 
@@ -149,17 +160,8 @@ Or just ask Claude Code:
 - "what commands were denied by smart approval today?"
 - "how many commands did smart approval auto-approve?"
 
-## Prompt optimization
-
-The AI prompt was tested against 45 cases across 7 categories (standard, tricky-safe, valid-destructive, destructive-deny, dangerous, prompt-injection, edge-case), with 5 candidates and triple-pass scoring. The winning prompt scores 81.3% overall: **100% on destructive and dangerous commands**, 97.5% on standard commands, 100% on safe-but-tricky ones.
-
-See the [optimization spec](docs/superpowers/specs/2026-04-15-prompt-optimization-design.md) for methodology and results. To re-evaluate or test a new prompt:
-
-```bash
-./eval-prompt.sh prompts/candidate-refined.txt --runs 3 --model haiku
-```
-
-## Debugging
+<details>
+<summary>Debugging</summary>
 
 Extract sub-commands from a compound command:
 
@@ -175,7 +177,10 @@ Verbose mode shows every matching decision on stderr:
 echo '{"tool_input":{"command":"ls | grep foo"}}' | ./auto-approve.sh --debug
 ```
 
-## Testing
+</details>
+
+<details>
+<summary>Testing</summary>
 
 145 tests. Requires [BATS](https://bats-core.readthedocs.io/).
 
@@ -183,15 +188,20 @@ echo '{"tool_input":{"command":"ls | grep foo"}}' | ./auto-approve.sh --debug
 bats test/
 ```
 
-## Security notice
+</details>
 
-**Remove `bash`, `sh`, and `zsh` from your allow list.** Commands like `bash -c 'echo hello'` have no shell metacharacters, so they take the fast path and match the prefix list without recursing into the inner command. If `Bash(bash *)` is in your allow list, `bash -c 'rm -rf /'` would be auto-approved.
+<details>
+<summary>Prompt optimization</summary>
 
-Check for and remove vulnerable rules:
+The AI prompt was tested against 45 cases across 7 categories (standard, tricky-safe, valid-destructive, destructive-deny, dangerous, prompt-injection, edge-case), with 5 candidates and triple-pass scoring. The winning prompt scores 81.3% overall: **100% on destructive and dangerous commands**, 97.5% on standard commands, 100% on safe-but-tricky ones.
+
+See the [optimization spec](docs/superpowers/specs/2026-04-15-prompt-optimization-design.md) for methodology and results. To re-evaluate or test a new prompt:
 
 ```bash
-for f in ~/.claude/settings.json ~/.claude/settings.local.json .claude/settings.json .claude/settings.local.json; do [ -f "$f" ] && jq 'del(.permissions.allow[] | select(test("^Bash\\((ba|z)?sh \\*\\)$")))' "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
+./eval-prompt.sh prompts/candidate-refined.txt --runs 3 --model haiku
 ```
+
+</details>
 
 ## Design decisions
 
