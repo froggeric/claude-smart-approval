@@ -5,7 +5,7 @@
   "author": {
     "name": "Ory Band"
   },
-  "repository": "https://github.com/oryband/claude-code-auto-approve",
+  "repository": "https://github.com/froggeric/claude-smart-approval",
   "license": "MIT",
   "keywords": ["hooks", "bash", "permissions", "compound-commands", "auto-approve"]
 }

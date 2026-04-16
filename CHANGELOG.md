@@ -59,5 +59,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - CI: install bats via apt instead of npm. ([`da37567`])
 
-[2.0.0]: https://github.com/oryband/claude-code-auto-approve/compare/v1.0.0...v2.0.0
-[1.0.0]: https://github.com/oryband/claude-code-auto-compare/releases/tag/v1.0.0
+[2.0.0]: https://github.com/froggeric/claude-smart-approval/compare/v1.0.0...v2.0.0
+[1.0.0]: https://github.com/froggeric/claude-smart-approval/releases/tag/v1.0.0
