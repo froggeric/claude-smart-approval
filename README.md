@@ -79,6 +79,26 @@ When Stage 1 falls through (unknown command, not in allow or deny lists), the ho
 
 **Provider-agnostic:** Uses `claude -p` which inherits your configured provider (z.ai, ollama, etc.), not the Anthropic API directly.
 
+## Prompt optimization
+
+The smart approval prompt was optimized through systematic evaluation:
+
+1. **Test suite** (`test/prompt-eval-suite.json`): 45 test cases across 7 categories — standard, tricky-safe, valid-destructive, destructive-deny, dangerous, prompt-injection, and edge-case. Each case specifies expected decision, security-criticality, and weights.
+
+2. **Evaluation harness** (`eval-prompt.sh`): Runs a prompt template against every test case using `claude -p` with triple passes per case. Scores decisions (+5 approve, +5 deny, -15 for wrong security-critical calls), patterns (+2), and reasons (+1). A security gate disqualifies any prompt that approves a security-critical deny case.
+
+3. **Process**: Baseline established → 5 candidate prompts tested → winner selected and refined → validated with 3x135 evaluations total.
+
+4. **Results**: The winning prompt scores 74.6% overall (98.3% standard, 100% tricky-safe, 88.3% valid-destructive, 75% destructive-deny, 75% dangerous, 31.2% prompt-injection, 61.9% edge-case). The deny-category ceiling is 75% due to scoring (no pattern bonus for deny decisions).
+
+See [`docs/superpowers/specs/2026-04-15-prompt-optimization-design.md`](docs/superpowers/specs/2026-04-15-prompt-optimization-design.md) for the full optimization spec.
+
+To re-evaluate or test a new prompt:
+
+```bash
+./eval-prompt.sh prompts/candidate-refined.txt --runs 3 --model haiku
+```
+
 ## Debugging
 
 Extract sub-commands from a compound command:
