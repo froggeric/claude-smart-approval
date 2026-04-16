@@ -126,7 +126,7 @@ This tool makes security decisions on your behalf.
 
 ## Prompt optimization
 
-The AI prompt was tested against 45 cases across 7 categories (standard, tricky-safe, destructive, dangerous, injection, edge cases), with 5 candidates and triple-pass scoring. The winning prompt scores 74.6% overall: 98.3% on standard commands, 100% on safe-but-tricky ones, 75% on dangerous command detection.
+The AI prompt was tested against 45 cases across 7 categories (standard, tricky-safe, valid-destructive, destructive-deny, dangerous, prompt-injection, edge-case), with 5 candidates and triple-pass scoring. The winning prompt scores 81.3% overall: **100% on destructive and dangerous commands**, 97.5% on standard commands, 100% on safe-but-tricky ones.
 
 See the [optimization spec](docs/superpowers/specs/2026-04-15-prompt-optimization-design.md) for methodology and results. To re-evaluate or test a new prompt:
 
