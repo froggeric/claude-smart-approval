@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](https://github.com/froggeric/claude-smart-approval/blob/master/LICENSE)
 [![Claude Code Hooks](https://img.shields.io/badge/Claude%20Code-hooks-orange.svg)](https://docs.anthropic.com/en/docs/claude-code/hooks)
 
-Stop clicking "Allow" on every `ls | grep foo`. Known commands are approved instantly from your allow/deny lists. Unknown commands are evaluated by AI — with your deny list enforced, injection-resistant prompts, and uncertain decisions kicked back to you. Nothing runs silently without your rules or your consent.
+Stop clicking "Allow" on every `ls | grep foo`. Known commands are approved instantly from **your allow/deny lists.** Unknown commands undergo a **smart AI evaluation** through your Haiku model, with your deny list enforced, injection-resistant prompts, and uncertain decisions kicked back to you.
 
 ## The problem
 
