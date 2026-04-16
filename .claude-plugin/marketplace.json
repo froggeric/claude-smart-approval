@@ -1,18 +1,18 @@
 {
   "name": "claude-smart-approval",
   "owner": {
-    "name": "Ory Band"
+    "name": "Frédéric Guigand"
   },
   "metadata": {
-    "description": "Auto-approve compound Bash commands in Claude Code",
-    "version": "2.0.0",
+    "description": "Auto-approve safe Bash commands in Claude Code using prefix matching and AI evaluation. Requires: shfmt, jq (brew install shfmt jq).",
+    "version": "2.0.1",
     "pluginRoot": "./"
   },
   "plugins": [
     {
-      "name": "auto-approve",
+      "name": "smart-approval",
       "source": "./",
-      "keywords": ["hooks", "bash", "permissions", "auto-approve", "smart-approval"],
+      "keywords": ["hooks", "bash", "permissions", "auto-approve", "smart-approval", "compound-commands"],
       "description": "Auto-approve safe Bash commands in Claude Code using prefix matching and AI evaluation."
     }
   ]

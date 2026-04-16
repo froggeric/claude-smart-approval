@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-04-16
+
+### Added
+
+- **Decision logging:** Stage 2 AI decisions are logged to `~/.claude/smart-approval.log` as structured JSON lines (timestamp, command, decision, reason, pattern, scope). On by default. Configurable via `SMART_APPROVE_LOG_FILE` and `SMART_APPROVE_LOG_MAX_LINES` (default 500). Set `SMART_APPROVE_LOG_FILE=""` to disable.
+
+- **Logging tests:** 5 new tests covering log creation, field validation, rotation, and disable. Test suite now 150 (from 145).
+
+### Changed
+
+- **Plugin identity:** Renamed plugin from `auto-approve` to `smart-approval`. Author updated to Frédéric Guigand. Install command is now `/plugin install smart-approval@claude-smart-approval`.
+
+- **Prerequisites section:** Promoted shfmt/jq requirements to their own section in README with clear install instructions.
+
+- **Plugin descriptions:** Marketplace and plugin manifests now include dependency requirements (`Requires: shfmt, jq`).
+
+### Fixed
+
+- **Evaluation scoring:** Added +2 justification bonus for correct deny/ask decisions in `eval-prompt.sh`. Previously, only approve decisions could earn the pattern bonus (+2), capping deny/ask categories at 75% regardless of accuracy. All categories can now reach 100%.
+
 ## [2.0.0] - 2026-04-16
 
 ### Added
@@ -59,5 +79,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - CI: install bats via apt instead of npm. ([`da37567`])
 
+[2.0.1]: https://github.com/froggeric/claude-smart-approval/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/froggeric/claude-smart-approval/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/froggeric/claude-smart-approval/releases/tag/v1.0.0

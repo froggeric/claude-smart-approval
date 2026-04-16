@@ -154,3 +154,106 @@ JSONEOF
   run bash -c '"$1" test-prompt --command "$2" --cwd "/tmp"' _ "$SMART_SCRIPT" "$long_cmd"
   [[ "$output" == *"[truncated]"* ]]
 }
+
+# -- decision logging --
+
+@test "log: creates log file on approve" {
+  local log_file
+  log_file=$(mktemp)
+  local claude_output
+  claude_output=$(cat <<'JSONEOF'
+{"type":"result","result":"{\"decision\":\"approve\",\"reason\":\"safe\",\"pattern\":\"Bash(ls *)\",\"scope\":\"global\"}","cost_usd":0.001}
+JSONEOF
+)
+  SMART_APPROVE_LOG_FILE="$log_file" run bash -c 'printf "%s" "$1" | "$2" test-parse' _ "$claude_output" "$SMART_SCRIPT"
+  [[ -f "$log_file" ]]
+  local entry
+  entry=$(<"$log_file")
+  [[ "$entry" == *'"decision":"approve"'* ]]
+  [[ "$entry" == *'"pattern":"Bash(ls *)"'* ]]
+  rm -f "$log_file"
+}
+
+@test "log: creates log file on deny" {
+  local log_file
+  log_file=$(mktemp)
+  local claude_output
+  claude_output=$(cat <<'JSONEOF'
+{"type":"result","result":"{\"decision\":\"deny\",\"reason\":\"destructive operation\"}","cost_usd":0.001}
+JSONEOF
+)
+  SMART_APPROVE_LOG_FILE="$log_file" run bash -c 'printf "%s" "$1" | "$2" test-parse' _ "$claude_output" "$SMART_SCRIPT"
+  [[ -f "$log_file" ]]
+  local entry
+  entry=$(<"$log_file")
+  [[ "$entry" == *'"decision":"deny"'* ]]
+  [[ "$entry" == *"destructive operation"* ]]
+  rm -f "$log_file"
+}
+
+@test "log: entry contains required fields" {
+  local log_file
+  log_file=$(mktemp)
+  local claude_output
+  claude_output=$(cat <<'JSONEOF'
+{"type":"result","result":"{\"decision\":\"approve\",\"reason\":\"safe read\",\"pattern\":\"Bash(git status *)\",\"scope\":\"global\"}","cost_usd":0.001}
+JSONEOF
+)
+  SMART_APPROVE_LOG_FILE="$log_file" run bash -c 'printf "%s" "$1" | "$2" test-parse "git status"' _ "$claude_output" "$SMART_SCRIPT"
+  # Verify valid JSON
+  run jq '.' "$log_file"
+  [[ "$status" -eq 0 ]]
+  # Verify fields
+  run jq -r '.decision' "$log_file"
+  [[ "$output" == "approve" ]]
+  run jq -r '.reason' "$log_file"
+  [[ "$output" == "safe read" ]]
+  run jq -r '.pattern' "$log_file"
+  [[ "$output" == "Bash(git status *)" ]]
+  run jq -r '.ts' "$log_file"
+  [[ "$output" != "" ]]
+  [[ "$output" != "null" ]]
+  rm -f "$log_file"
+}
+
+@test "log: rotation trims old entries" {
+  local log_file
+  log_file=$(mktemp)
+  # Pre-fill with 3 lines
+  for i in 1 2 3; do
+    echo '{"ts":"old","cmd":"old","decision":"approve","reason":"x","pattern":"","scope":""}' >> "$log_file"
+  done
+  local claude_output
+  claude_output=$(cat <<'JSONEOF'
+{"type":"result","result":"{\"decision\":\"approve\",\"reason\":\"safe\",\"pattern\":\"Bash(ls *)\",\"scope\":\"global\"}","cost_usd":0.001}
+JSONEOF
+)
+  # Max 3 lines — adding one more should trigger rotation to keep only last 3
+  SMART_APPROVE_LOG_FILE="$log_file" SMART_APPROVE_LOG_MAX_LINES=3 \
+    run bash -c 'printf "%s" "$1" | "$2" test-parse' _ "$claude_output" "$SMART_SCRIPT"
+  local line_count
+  line_count=$(wc -l < "$log_file" | tr -d ' ')
+  [[ "$line_count" -eq 3 ]]
+  # Oldest entry should be gone
+  local first_line
+  first_line=$(head -1 "$log_file")
+  [[ "$first_line" != *'"ts":"old"'* ]] || [[ "$first_line" == *'"cmd":"old"'* ]]
+  rm -f "$log_file"
+}
+
+@test "log: empty SMART_APPROVE_LOG_FILE disables logging" {
+  local log_file
+  log_file=$(mktemp)
+  rm -f "$log_file"
+  local claude_output
+  claude_output=$(cat <<'JSONEOF'
+{"type":"result","result":"{\"decision\":\"approve\",\"reason\":\"safe\",\"pattern\":\"Bash(ls *)\",\"scope\":\"global\"}","cost_usd":0.001}
+JSONEOF
+)
+  # Point to a temp file that shouldn't exist, then verify it wasn't created
+  local check_file
+  check_file=$(mktemp)
+  rm -f "$check_file"
+  SMART_APPROVE_LOG_FILE="" run bash -c 'printf "%s" "$1" | "$2" test-parse' _ "$claude_output" "$SMART_SCRIPT"
+  [[ ! -f "$check_file" ]]
+}

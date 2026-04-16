@@ -1,7 +1,7 @@
 # claude-smart-approval
 
-[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/froggeric/claude-smart-approval/blob/master/CHANGELOG.md)
-[![Tests](https://img.shields.io/badge/tests-145%20passing-brightgreen.svg)](https://github.com/froggeric/claude-smart-approval/tree/master/test)
+[![Version](https://img.shields.io/badge/version-2.0.1-blue.svg)](https://github.com/froggeric/claude-smart-approval/blob/master/CHANGELOG.md)
+[![Tests](https://img.shields.io/badge/tests-150%20passing-brightgreen.svg)](https://github.com/froggeric/claude-smart-approval/tree/master/test)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](https://github.com/froggeric/claude-smart-approval/blob/master/LICENSE)
 [![Claude Code Hooks](https://img.shields.io/badge/Claude%20Code-hooks-orange.svg)](https://docs.anthropic.com/en/docs/claude-code/hooks)
 
@@ -24,11 +24,17 @@ This hook parses compound commands into their individual pieces and checks each 
 
 ## Install
 
-Requires [shfmt](https://github.com/mvdan/sh), [jq](https://jqlang.github.io/jq/), and optionally the [claude CLI](https://docs.anthropic.com/en/docs/claude-code) for smart approval (Stage 2).
+## Prerequisites
+
+**Required:** [shfmt](https://github.com/mvdan/sh) and [jq](https://jqlang.github.io/jq/) must be installed on your system.
 
 ```bash
 brew install shfmt jq
 ```
+
+Without these, the hook silently falls back to Claude Code's normal permission prompts.
+
+## Install
 
 ### Option A: Plugin marketplace (recommended)
 
@@ -36,7 +42,7 @@ From inside Claude Code:
 
 ```
 /plugin marketplace add froggeric/claude-smart-approval
-/plugin install auto-approve@claude-smart-approval
+/plugin install smart-approval@claude-smart-approval
 ```
 
 Then add your allow/deny rules to `~/.claude/settings.json`.
@@ -114,6 +120,8 @@ This tool makes security decisions on your behalf.
 | `SMART_APPROVE_MODEL` | `haiku` | Model for evaluation (fast/cheap recommended) |
 | `SMART_APPROVE_AUTO_LEARN` | `true` | Auto-learn approved patterns to settings |
 | `SMART_APPROVE_TIMEOUT` | `25` | Timeout in seconds |
+| `SMART_APPROVE_LOG_FILE` | `~/.claude/smart-approval.log` | Log file path. Set empty to disable. |
+| `SMART_APPROVE_LOG_MAX_LINES` | `500` | Max log entries before rotation |
 | `CLAUDE_CMD` | `claude` | Path to claude CLI binary |
 
 ## Prompt optimization

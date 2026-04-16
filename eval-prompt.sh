@@ -63,10 +63,13 @@ score_run() {
     fi
   fi
 
+  # Bonus: correct glob pattern for approvals (+2), substantive justification for deny/ask (+2)
   if [[ "$actual" == "approve" && "$expected" == "approve" ]]; then
     if [[ "$pattern" == Bash*"*"* ]]; then
       score=$((score + 2))
     fi
+  elif [[ "$actual" == "$expected" && "$expected" != "approve" && -n "$reason" && "$reason" != "null" && ${#reason} -gt 10 ]]; then
+    score=$((score + 2))
   fi
 
   if [[ -n "$reason" && "$reason" != "null" && ${#reason} -gt 5 ]]; then

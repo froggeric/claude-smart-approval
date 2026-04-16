@@ -1,11 +1,11 @@
 {
-  "name": "auto-approve",
-  "description": "Auto-approve safe Bash commands in Claude Code using prefix matching and AI evaluation",
-  "version": "2.0.0",
+  "name": "smart-approval",
+  "description": "Auto-approve safe Bash commands in Claude Code using prefix matching and AI evaluation. Requires: shfmt, jq (brew install shfmt jq).",
+  "version": "2.0.1",
   "author": {
-    "name": "Ory Band"
+    "name": "Frédéric Guigand"
   },
   "repository": "https://github.com/froggeric/claude-smart-approval",
   "license": "MIT",
-  "keywords": ["hooks", "bash", "permissions", "compound-commands", "auto-approve"]
+  "keywords": ["hooks", "bash", "permissions", "compound-commands", "auto-approve", "smart-approval"]
 }

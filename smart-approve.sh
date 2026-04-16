@@ -17,6 +17,8 @@ SMART_APPROVE_AUTO_LEARN="${SMART_APPROVE_AUTO_LEARN:-true}"
 CLAUDE_CMD="${CLAUDE_CMD:-claude}"
 SMART_APPROVE_TIMEOUT="${SMART_APPROVE_TIMEOUT:-25}"
 SMART_APPROVE_DEBUG="${SMART_APPROVE_DEBUG:-false}"
+SMART_APPROVE_LOG_FILE="${SMART_APPROVE_LOG_FILE:-$HOME/.claude/smart-approval.log}"
+SMART_APPROVE_LOG_MAX_LINES="${SMART_APPROVE_LOG_MAX_LINES:-500}"
 
 # --- Debug logging ---
 smart_debug() {
@@ -42,6 +44,33 @@ smart_ask() {
     hookSpecificOutput: {hookEventName:"PreToolUse", permissionDecision:"ask"},
     permissionDecisionReason: $msg
   }'
+}
+
+# --- Decision logging ---
+log_decision() {
+  [[ -n "${SMART_APPROVE_LOG_FILE:-}" ]] || return 0
+  local command="$1" decision="$2" reason="$3" pattern="${4:-}" scope="${5:-}"
+  local ts
+  ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "unknown")
+
+  # Append structured JSON line
+  jq -cn \
+    --arg ts "$ts" \
+    --arg cmd "$command" \
+    --arg dec "$decision" \
+    --arg reason "$reason" \
+    --arg pattern "$pattern" \
+    --arg scope "$scope" \
+    '{ts:$ts, cmd:$cmd, decision:$dec, reason:$reason, pattern:$pattern, scope:$scope}' \
+    >> "$SMART_APPROVE_LOG_FILE" 2>/dev/null || return
+
+  # Rotate if over limit
+  local line_count
+  line_count=$(wc -l < "$SMART_APPROVE_LOG_FILE" 2>/dev/null | tr -d ' ')
+  if [[ "$line_count" -gt "${SMART_APPROVE_LOG_MAX_LINES}" ]]; then
+    local tmp
+    tmp=$(mktemp) && tail -n "${SMART_APPROVE_LOG_MAX_LINES}" "$SMART_APPROVE_LOG_FILE" > "$tmp" && mv "$tmp" "$SMART_APPROVE_LOG_FILE"
+  fi
 }
 
 # Sanitize untrusted input before embedding in the LLM prompt.
@@ -143,7 +172,7 @@ PROMPT
 # Outputs hook JSON on stdout. For approve decisions, also outputs
 # AUTO_LEARN_PATTERN=... and AUTO_LEARN_SCOPE=... lines for the caller.
 parse_response() {
-  local response="$1"
+  local response="$1" command="${2:-}"
 
   # Extract .result from claude -p JSON output
   local result
@@ -181,14 +210,17 @@ parse_response() {
 
   case "$decision" in
     approve)
+      log_decision "$command" "$decision" "$reason" "$pattern" "$scope"
       smart_approve
       # Output auto-learn metadata on stdout for the caller to parse
       printf 'AUTO_LEARN_PATTERN=%s\nAUTO_LEARN_SCOPE=%s\n' "$pattern" "$scope"
       ;;
     deny)
+      log_decision "$command" "$decision" "$reason"
       smart_deny "$reason"
       ;;
     *)
+      log_decision "$command" "$decision" "$reason"
       smart_ask "$reason"
       ;;
   esac
@@ -236,7 +268,7 @@ evaluate_command() {
 
   smart_debug "Claude response received, parsing..."
 
-  parse_response "$response"
+  parse_response "$response" "$command"
 }
 
 # --- Main ---
