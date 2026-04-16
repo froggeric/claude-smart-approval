@@ -4,8 +4,8 @@
     "name": "Frédéric Guigand"
   },
   "metadata": {
-    "description": "Auto-approve safe Bash commands in Claude Code using prefix matching and AI evaluation. Requires: shfmt, jq (brew install shfmt jq).",
-    "version": "2.0.1",
+    "description": "Stop clicking Allow on every ls | grep foo. Known commands approved instantly from your allow/deny lists. Unknown commands evaluated by AI — deny list enforced, injection-resistant prompts, uncertain decisions kicked back to you. Requires: shfmt, jq (brew install shfmt jq). See github.com/froggeric/claude-smart-approval for security notices.",
+    "version": "2.0.2",
     "pluginRoot": "./"
   },
   "plugins": [
@@ -13,7 +13,7 @@
       "name": "smart-approval",
       "source": "./",
       "keywords": ["hooks", "bash", "permissions", "auto-approve", "smart-approval", "compound-commands"],
-      "description": "Auto-approve safe Bash commands in Claude Code using prefix matching and AI evaluation."
+      "description": "Stop clicking Allow on every ls | grep foo. Known commands approved instantly from your allow/deny lists. Unknown commands evaluated by AI with safety-first design. See github.com/froggeric/claude-smart-approval for security notices."
     }
   ]
 }
