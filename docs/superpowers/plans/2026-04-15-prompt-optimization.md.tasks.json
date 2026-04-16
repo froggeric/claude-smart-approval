@@ -1,0 +1,47 @@
+{
+  "planPath": "docs/superpowers/plans/2026-04-15-prompt-optimization.md",
+  "tasks": [
+    {
+      "id": 18,
+      "subject": "Task 1: Test Suite",
+      "status": "completed",
+      "description": "Create test/prompt-eval-suite.json with 45 test cases across 7 categories"
+    },
+    {
+      "id": 19,
+      "subject": "Task 2: Evaluation Harness",
+      "status": "completed",
+      "blockedBy": [18],
+      "description": "Create eval-prompt.sh that runs prompt templates against test suite"
+    },
+    {
+      "id": 20,
+      "subject": "Task 3: Candidate Prompt Templates",
+      "status": "completed",
+      "blockedBy": [18],
+      "description": "Create 5 candidate prompt template files in prompts/"
+    },
+    {
+      "id": 21,
+      "subject": "Task 4: Run Baseline and All Candidates",
+      "status": "completed",
+      "blockedBy": [19, 20],
+      "description": "Run all 5 candidates through test suite, capture results"
+    },
+    {
+      "id": 22,
+      "subject": "Task 5: Select Winner, Refine, and Validate",
+      "status": "completed",
+      "blockedBy": [21],
+      "description": "Compare results, select winner per spec criteria, refine, validate"
+    },
+    {
+      "id": 23,
+      "subject": "Task 6: Port Winning Prompt to Production",
+      "status": "completed",
+      "blockedBy": [22],
+      "description": "Update build_prompt in smart-approve.sh with winning prompt"
+    }
+  ],
+  "lastUpdated": "2026-04-16T12:00:00Z"
+}

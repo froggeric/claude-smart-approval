@@ -196,7 +196,7 @@ for ((i=0; i<total_cases; i++)); do
   done
   avg=$(awk "BEGIN {printf \"%.1f\", $sum / $RUNS}")
 
-  cat_earned[$cat]=$((${cat_earned[$cat]:-0} + ${avg%.*}))
+  cat_earned[$cat]=$((${cat_earned[$cat]:-0} + sum))
   cat_max[$cat]=$((${cat_max[$cat]:-0} + 8 * RUNS))
 
   printf '%-8s | %-26s | %-8s' "$id" "$display_cmd" "$exp"
