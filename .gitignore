@@ -1,0 +1,18 @@
+# macOS
+.DS_Store
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# Superpowers plan/task management files
+docs/superpowers/plans/
+
+# Intermediate prompt evaluation results
+results/candidate-*[!-final].txt
+
+# Losing candidate prompts (winner is candidate-refined.txt)
+prompts/candidate-a.txt
+prompts/candidate-b.txt
+prompts/candidate-c.txt
+prompts/candidate-d.txt
+prompts/candidate-e.txt
