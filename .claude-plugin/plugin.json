@@ -1,7 +1,7 @@
 {
   "name": "auto-approve-compound-bash",
   "description": "Auto-approve compound Bash commands (pipes, chains, subshells) by parsing each segment via shfmt AST and checking against allow/deny lists",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "author": {
     "name": "Ory Band"
   },

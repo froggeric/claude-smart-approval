@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Auto-approve compound Bash commands in Claude Code",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "pluginRoot": "./"
   },
   "plugins": [

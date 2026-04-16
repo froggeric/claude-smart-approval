@@ -1,5 +1,10 @@
 # approve-compound-bash
 
+[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/oryband/claude-code-auto-approve/blob/master/CHANGELOG.md)
+[![Tests](https://img.shields.io/badge/tests-145%20passing-brightgreen.svg)](https://github.com/oryband/claude-code-auto-approve/tree/master/test)
+[![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](https://github.com/oryband/claude-code-auto-approve/blob/master/LICENSE)
+[![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-orange.svg)](https://docs.anthropic.com/en/docs/claude-code)
+
 A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) hook that auto-approves compound Bash commands when every sub-command is in your allow list and none are in your deny list.
 
 ## The problem
