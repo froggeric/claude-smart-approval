@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Shared helpers for BATS tests of approve-compound-bash.sh
+# Shared helpers for BATS tests of auto-approve.sh
 #
 # Two test layers:
 #   run_parse  "cmd"              -> test command extraction (no permissions)
 #   run_hook   "cmd" ALLOW [DENY] -> test full hook pipeline (stdin JSON + permissions)
 
-HOOK_SCRIPT="${BATS_TEST_DIRNAME}/../approve-compound-bash.sh"
+HOOK_SCRIPT="${BATS_TEST_DIRNAME}/../auto-approve.sh"
 
 # ---------------------------------------------------------------------------
 # Parsing helpers (plain text stdin -> extracted commands on stdout)

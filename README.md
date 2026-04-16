@@ -30,7 +30,11 @@ Requires bash 4.3+, [shfmt](https://github.com/mvdan/sh), [jq](https://jqlang.gi
 brew install shfmt jq
 ```
 
-Register the hook in `~/.claude/settings.json`:
+Copy all three scripts to the same directory and register the hook in `~/.claude/settings.json`:
+
+```bash
+cp auto-approve.sh smart-approve.sh auto-learn.sh ~/.claude/scripts/
+```
 
 ```jsonc
 {
@@ -39,7 +43,7 @@ Register the hook in `~/.claude/settings.json`:
       "matcher": "Bash",
       "hooks": [{
         "type": "command",
-        "command": "~/.claude/scripts/approve-compound-bash.sh",
+        "command": "~/.claude/scripts/auto-approve.sh",
         "timeout": 30
       }]
     }]
@@ -114,7 +118,7 @@ See the [optimization spec](docs/superpowers/specs/2026-04-15-prompt-optimizatio
 Extract sub-commands from a compound command:
 
 ```bash
-echo 'nvm use && yarn test' | ./approve-compound-bash.sh parse
+echo 'nvm use && yarn test' | ./auto-approve.sh parse
 # nvm use
 # yarn test
 ```
@@ -122,7 +126,7 @@ echo 'nvm use && yarn test' | ./approve-compound-bash.sh parse
 Verbose mode shows every matching decision on stderr:
 
 ```bash
-echo '{"tool_input":{"command":"ls | grep foo"}}' | ./approve-compound-bash.sh --debug
+echo '{"tool_input":{"command":"ls | grep foo"}}' | ./auto-approve.sh --debug
 ```
 
 ## Testing

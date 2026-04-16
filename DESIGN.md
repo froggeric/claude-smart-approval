@@ -5,7 +5,7 @@
 
 ## Overview
 
-Enhancement to `approve-compound-bash.sh` that adds AI-powered smart approval as a second stage when the existing allow/deny list matching doesn't reach a decision.
+Enhancement to `auto-approve.sh` that adds AI-powered smart approval as a second stage when the existing allow/deny list matching doesn't reach a decision.
 
 ## Architecture
 
@@ -76,7 +76,7 @@ echo "$PROMPT" | claude -p \
 
 | File | Responsibility |
 |------|----------------|
-| `approve-compound-bash.sh` | Main hook: Stage 1 prefix matching + Stage 2 dispatch |
+| `auto-approve.sh` | Main hook: Stage 1 prefix matching + Stage 2 dispatch |
 | `smart-approve.sh` | AI evaluation: prompt construction, claude invocation, response parsing |
 | `auto-learn.sh` | Pattern normalization, deduplication, settings file manipulation |
 | `eval-prompt.sh` | Prompt evaluation harness: runs templates against test suite with scoring |

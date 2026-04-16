@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
-# approve-compound-bash — PreToolUse hook for Claude Code
+# auto-approve — PreToolUse hook for Claude Code
 #
 # Auto-approves compound Bash commands (pipes, chains, subshells, etc.)
 # when every sub-command matches your allow list and none match your deny

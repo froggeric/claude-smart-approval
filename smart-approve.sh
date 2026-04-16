@@ -2,7 +2,7 @@
 # shellcheck shell=bash
 # smart-approve.sh — Stage 2 AI-powered smart approval
 #
-# Called by approve-compound-bash.sh when Stage 1 (allow/deny list matching)
+# Called by auto-approve.sh when Stage 1 (allow/deny list matching)
 # doesn't reach a decision. Evaluates the command using a headless Claude
 # instance and returns an approval decision with optional auto-learning.
 #
@@ -23,7 +23,7 @@ smart_debug() {
   [[ "${SMART_APPROVE_DEBUG}" != "true" ]] || printf '[smart-approve] %s\n' "$*" >&2
 }
 
-# --- Output helpers (same JSON format as approve-compound-bash.sh) ---
+# --- Output helpers (same JSON format as auto-approve.sh) ---
 smart_approve() {
   printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}'
 }
