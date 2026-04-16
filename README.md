@@ -22,13 +22,26 @@ This hook parses compound commands into their individual pieces and checks each 
 - **Auto-learning**: approved patterns saved to your settings for instant future matches
 - **Safety first**: deny list is absolute, AI treats commands as untrusted input, uncertain means it asks you
 
-## Quick start
+## Install
 
-Requires bash 4.3+, [shfmt](https://github.com/mvdan/sh), [jq](https://jqlang.github.io/jq/), and optionally the [claude CLI](https://docs.anthropic.com/en/docs/claude-code) for smart approval.
+Requires [shfmt](https://github.com/mvdan/sh), [jq](https://jqlang.github.io/jq/), and optionally the [claude CLI](https://docs.anthropic.com/en/docs/claude-code) for smart approval (Stage 2).
 
 ```bash
 brew install shfmt jq
 ```
+
+### Option A: Plugin marketplace (recommended)
+
+From inside Claude Code:
+
+```
+/plugin marketplace add froggeric/claude-smart-approval
+/plugin install auto-approve@claude-smart-approval
+```
+
+Then add your allow/deny rules to `~/.claude/settings.json`.
+
+### Option B: Manual
 
 Copy all three scripts to the same directory and register the hook in `~/.claude/settings.json`:
 

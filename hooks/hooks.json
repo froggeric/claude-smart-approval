@@ -1,4 +1,5 @@
 {
+  "description": "Auto-approve safe Bash commands using prefix matching and AI evaluation",
   "hooks": {
     "PreToolUse": [
       {
