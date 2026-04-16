@@ -209,4 +209,4 @@ See [DESIGN.md](DESIGN.md) for architecture, file structure, and rationale (why 
 
 ## Credits
 
-Forked from [claude-code-plus](https://github.com/AbdelrahmanHafez/claude-code-plus) (MIT), extended with deny list support, active deny for compounds, fast path for simple commands, settings layer support, env var stripping, AI-powered smart approval, auto-learning, and a 145-test suite.
+Based on [claude-code-auto-approve](https://github.com/oryband/claude-code-auto-approve) (MIT) by Ory Band, via [claude-code-plus](https://github.com/AbdelrahmanHafez/claude-code-plus) (MIT) by Abdelrahman Hafez. Extended with deny list support, active deny for compounds, fast path for simple commands, settings layer support, env var stripping, AI-powered smart approval, auto-learning, and a 145-test suite.
