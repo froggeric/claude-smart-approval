@@ -1,6 +1,6 @@
 # claude-smart-approval
 
-[![Version](https://img.shields.io/badge/version-2.0.1-blue.svg)](https://github.com/froggeric/claude-smart-approval/blob/master/CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.0.2-blue.svg)](https://github.com/froggeric/claude-smart-approval/blob/master/CHANGELOG.md)
 [![Tests](https://img.shields.io/badge/tests-150%20passing-brightgreen.svg)](https://github.com/froggeric/claude-smart-approval/tree/master/test)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](https://github.com/froggeric/claude-smart-approval/blob/master/LICENSE)
 [![Claude Code Hooks](https://img.shields.io/badge/Claude%20Code-hooks-orange.svg)](https://docs.anthropic.com/en/docs/claude-code/hooks)
@@ -158,9 +158,15 @@ echo '{"tool_input":{"command":"ls | grep foo"}}' | ./auto-approve.sh --debug
 bats test/
 ```
 
-## Known limitations
+## Security notice
 
-`bash -c 'echo hello'` has no shell metacharacters, so it takes the fast path and matches the prefix list as-is without recursing into the inner command. Don't add `bash`, `sh`, or `zsh` to your allow list.
+**Remove `bash`, `sh`, and `zsh` from your allow list.** Commands like `bash -c 'echo hello'` have no shell metacharacters, so they take the fast path and match the prefix list without recursing into the inner command. If `Bash(bash *)` is in your allow list, `bash -c 'rm -rf /'` would be auto-approved.
+
+Check for and remove vulnerable rules:
+
+```bash
+for f in ~/.claude/settings.json ~/.claude/settings.local.json .claude/settings.json .claude/settings.local.json; do [ -f "$f" ] && jq 'del(.permissions.allow[] | select(test("^Bash\\((ba|z)?sh \\*\\)$")))' "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
+```
 
 ## Design decisions
 

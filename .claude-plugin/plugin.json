@@ -1,7 +1,7 @@
 {
   "name": "smart-approval",
   "description": "Auto-approve safe Bash commands in Claude Code using prefix matching and AI evaluation. Requires: shfmt, jq (brew install shfmt jq).",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "author": {
     "name": "Frédéric Guigand"
   },

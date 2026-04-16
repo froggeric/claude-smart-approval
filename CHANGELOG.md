@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.2] - 2026-04-16
+
+### Changed
+
+- **Security notice:** Promoted shell interpreter limitation to a "Security notice" section in README. Added one-liner to check and remove `Bash(bash *)`, `Bash(sh *)`, and `Bash(zsh *)` rules from all settings files.
+
+- **CLAUDE.md:** Added for Claude Code integration — project commands, architecture, test patterns, and settings layer documentation.
+
 ## [2.0.1] - 2026-04-16
 
 ### Added
@@ -79,6 +87,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - CI: install bats via apt instead of npm. ([`da37567`])
 
+[2.0.2]: https://github.com/froggeric/claude-smart-approval/compare/v2.0.1...v2.0.2
 [2.0.1]: https://github.com/froggeric/claude-smart-approval/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/froggeric/claude-smart-approval/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/froggeric/claude-smart-approval/releases/tag/v1.0.0
