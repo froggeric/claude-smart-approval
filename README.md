@@ -82,6 +82,8 @@ That's it. The hook reads permissions from all settings layers (global, project,
 
 ## How it works
 
+Your existing `permissions.allow` and `permissions.deny` lists are the foundation. The hook reads them from all four settings layers — global (`~/.claude/settings.json`), global local (`~/.claude/settings.local.json`), project (`.claude/settings.json`), and project local (`.claude/settings.local.json`). No duplication. No separate config.
+
 Two stages:
 
 ### Stage 1: Prefix matching (instant)
@@ -91,14 +93,14 @@ Simple commands checked directly against your allow/deny lists. Compound command
 Three outcomes:
 
 - **Approve**: every segment in your allow list, none in deny. Runs immediately.
-- **Deny**: any segment matches your deny list. Blocked.
-- **Ask you**: unknown segment or parse failure. You see Claude Code's normal permission prompt.
+- **Deny**: any segment matches your deny list. Blocked. No appeal — deny always wins.
+- **Ask you**: unknown segment or parse failure. Falls through to Stage 2.
 
 On any error it asks you. It never approves what it can't fully analyze.
 
 ### Stage 2: AI evaluation (~8-13 seconds)
 
-When Stage 1 can't decide, the command goes to `claude -p --model haiku` with a security evaluation prompt. The AI classifies it as approve, deny, or ask. Approved patterns are auto-learned to your settings so they never need to ask again.
+When Stage 1 can't decide, the command goes to `claude -p --model haiku` with a security evaluation prompt. Your deny list is passed to the AI so it never auto-learns a pattern you've explicitly blocked. The AI classifies the command as approve, deny, or ask (escalates to you with reasoning). Approved patterns are auto-learned to your settings so they never need to ask again.
 
 Smart approval is **on by default**. Set `SMART_APPROVE_ENABLED=false` to disable.
 
@@ -123,6 +125,29 @@ This tool makes security decisions on your behalf.
 | `SMART_APPROVE_LOG_FILE` | `~/.claude/smart-approval.log` | Log file path. Set empty to disable. |
 | `SMART_APPROVE_LOG_MAX_LINES` | `500` | Max log entries before rotation |
 | `CLAUDE_CMD` | `claude` | Path to claude CLI binary |
+
+## Audit log
+
+Every Stage 2 decision is logged as structured JSON to `~/.claude/smart-approval.log`. Each entry has timestamp, command, decision, reason, pattern, and scope.
+
+Query it directly with `jq`:
+
+```bash
+# Recent approvals
+jq 'select(.decision=="approve")' ~/.claude/smart-approval.log
+
+# Denied commands
+jq 'select(.decision=="deny")' ~/.claude/smart-approval.log
+
+# Everything from today
+jq "select(.ts | startswith(\"$(date -u +%Y-%m-%d)\"))" ~/.claude/smart-approval.log
+```
+
+Or just ask Claude Code:
+
+- "show me the smart approval logs"
+- "what commands were denied by smart approval today?"
+- "how many commands did smart approval auto-approve?"
 
 ## Prompt optimization
 
