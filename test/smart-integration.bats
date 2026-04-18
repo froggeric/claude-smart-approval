@@ -134,3 +134,13 @@ load test_helper
   rm -rf "$TEST_DIR"
   cleanup_mocks
 }
+
+# -- deny list override prevention (C2) --
+
+@test "int: simple denied command NOT overridden by AI approve" {
+  # rm is on deny list but AI mock says approve — must still be denied
+  local mock_resp
+  mock_resp='{"type":"result","result":"{\"decision\":\"approve\",\"reason\":\"seems safe\",\"pattern\":\"Bash(rm *)\",\"scope\":\"project\"}","cost_usd":0.001}'
+  run_hook_smart "rm -rf /tmp/test" '["Bash(ls *)"]' '["Bash(rm *)"]' "$mock_resp"
+  [[ "$status" -eq 2 ]]
+}

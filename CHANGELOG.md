@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.3] - 2026-04-18
+
+### Fixed
+
+- **C1: Newline bypass in compound parsing.** Commands with embedded newlines (`echo hello\nrm -rf /`) took the simple path and could be auto-approved by matching only the first line. Newlines are now treated as command separators and trigger the compound parsing path.
+
+- **C2: Deny list bypassed by AI approval.** Simple commands on the deny list could be overridden by Stage 2 AI evaluation. The deny list is now checked before any AI approval for both simple and compound commands.
+
+- **C3: CI ShellCheck wrong filename.** The CI workflow referenced the old script name `approve-compound-bash.sh` instead of `auto-approve.sh`.
+
+- **C4: Case-sensitive prompt injection filter.** The sanitize filter only matched lowercase keywords. Uppercase (`APPROVE`, `DENY`) and mixed-case (`DeCiSion`) injection attempts now bypassed filtering. Fixed with `nocasematch`.
+
+- **C5: Auto-learn blocklist incomplete.** Missing 13 dangerous commands from the auto-learn validation blocklist: `eval`, `exec`, `bash`, `sh`, `zsh`, `sudo`, `su`, `source`, `python`, `python3`, `perl`, `ruby`, `node`.
+
+- **C6: Blocklist bypass via absolute paths.** `/usr/bin/rm` didn't match the blocklist entry `rm`. The validator now extracts the basename for comparison.
+
+- **I7: Sanitize over-stripping.** Commands like `grep decision file.txt` and `cat approved-list.txt` were stripped by the injection filter because keywords appeared as substrings. Replaced with instruction-pattern matching that only strips lines where keywords appear in injection contexts (JSON objects, start-of-line with colon/equals), not as command arguments.
+
+- **I8: TOCTOU race in auto-learn lock.** Stale lock cleanup used `rm -rf` directly, creating a window where a concurrent process's fresh lock could be deleted. Replaced with atomic `mv` + `rm` to prevent the race.
+
+- **I12: Quoted env var values.** `FOO="bar baz" ls` failed to strip the env var prefix because the regex stopped at the space inside quotes. Now handles double-quoted and single-quoted values.
+
+- **I13: Command wrappers not stripped.** `env ls`, `sudo ls`, `nice ls` didn't match prefix `ls`. Wrapper commands are now stripped before prefix matching.
+
+- **I14: Truncation logic.** The sanitize truncation used `${input%[![:space:]]*}` which only stripped 1 character (shortest suffix match). Replaced with a clean length-based approach that reserves space for the truncation marker.
+
+### Changed
+
+- **Deny list is now active.** Commands matching the deny list are now actively denied (exit 2 with message) instead of falling through to the native prompt. This applies to both simple and compound commands.
+
+- **Test suite expanded to 182 tests** (from 150). New tests cover newline bypass, deny override, case-insensitive sanitization, blocklist expansion, absolute path bypass, sanitize over-stripping, quoted env vars, and command wrapper stripping.
+
+- **Documentation:** Corrected bash version requirement from 4.3+ to 3.2+ (system bash on macOS). Updated test counts throughout CLAUDE.md, README.md, and DESIGN.md.
+
 ## [2.0.2] - 2026-04-16
 
 ### Changed
@@ -87,6 +121,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - CI: install bats via apt instead of npm. ([`da37567`])
 
+[2.0.3]: https://github.com/froggeric/claude-smart-approval/compare/v2.0.2...v2.0.3
 [2.0.2]: https://github.com/froggeric/claude-smart-approval/compare/v2.0.1...v2.0.2
 [2.0.1]: https://github.com/froggeric/claude-smart-approval/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/froggeric/claude-smart-approval/compare/v1.0.0...v2.0.0

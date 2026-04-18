@@ -47,7 +47,7 @@ Supporting files:
 
 ## Testing
 
-145 BATS tests in `test/`. Test helpers in `test/test_helper.bash`:
+182 BATS tests in `test/`. Test helpers in `test/test_helper.bash`:
 
 - `run_parse "cmd"` — test command extraction (parse mode)
 - `run_hook "cmd" '["Bash(ls *)"]'` — test Stage 1 allow/deny with `SMART_APPROVE_ENABLED=false`
@@ -62,4 +62,4 @@ Permissions loaded from (in order): `~/.claude/settings.json`, `~/.claude/settin
 
 ## Dependencies
 
-bash 4.3+ (namerefs), shfmt (AST parsing), jq (JSON + AST walking), claude CLI (AI evaluation, optional). CI uses `mfinelli/setup-shfmt@v2` and `apt-get install jq bats`.
+bash 3.2+ (main scripts), shfmt (AST parsing), jq (JSON + AST walking), claude CLI (AI evaluation, optional). CI uses `mfinelli/setup-shfmt@v2` and `apt-get install jq bats`.

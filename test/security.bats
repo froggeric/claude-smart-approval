@@ -96,12 +96,12 @@ load test_helper
 
 @test "sec: deny blocks even when allow matches (prefix)" {
   run_hook "git push --force" '["Bash(git *)"]' '["Bash(git push --force *)"]'
-  assert_fallthrough
+  assert_denied
 }
 
 @test "sec: deny exact match (no wildcard)" {
   run_hook "git push --force" '["Bash(git *)"]' '["Bash(git push --force)"]'
-  assert_fallthrough
+  assert_denied
 }
 
 # -- DeclClause array security --
@@ -146,6 +146,18 @@ load test_helper
 
 @test "sec: eval with dangerous command falls through (not in allow list)" {
   run_hook 'eval "rm -rf /"' '["Bash(echo *)"]'
+  assert_fallthrough
+}
+
+# -- newline bypass --
+
+@test "sec: newline in command does not bypass deny" {
+  run_hook $'echo hello\nrm -rf /' '["Bash(echo *)","Bash(rm *)"]' '["Bash(rm -rf *)"]'
+  assert_denied
+}
+
+@test "sec: newline in command does not auto-approve hidden command" {
+  run_hook $'echo hello\nrm -rf /' '["Bash(echo *)"]'
   assert_fallthrough
 }
 

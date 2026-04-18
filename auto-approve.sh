@@ -9,19 +9,9 @@
 #
 # See README.md for full documentation.
 #
-# Dependencies: bash 4.3+, shfmt, jq
+# Dependencies: bash 3.2+, shfmt, jq
 
 set -uo pipefail
-
-# Re-exec with modern bash if running old bash (namerefs require 4.3+)
-if [[ "${BASH_VERSINFO[0]}" -lt 4 || ( "${BASH_VERSINFO[0]}" -eq 4 && "${BASH_VERSINFO[1]}" -lt 3 ) ]]; then
-  for try_bash in /opt/homebrew/bin/bash /usr/local/bin/bash /home/linuxbrew/.linuxbrew/bin/bash; do
-    if [[ -x "$try_bash" ]]; then
-      exec "$try_bash" "$0" "$@"
-    fi
-  done
-  exit 0
-fi
 
 DEBUG=false
 readonly ALLOW_JSON='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}'
@@ -95,7 +85,7 @@ load_prefixes() {
 # process substitution, backticks).
 needs_compound_parse() {
   # shellcheck disable=SC2016  # $( is a literal pattern, not an expansion
-  [[ "$1" == *['|&;`']* || "$1" == *'$('* || "$1" == *'<('* || "$1" == *'>('* ]]
+  [[ "$1" == *['|&;`'$'\n']* || "$1" == *'$('* || "$1" == *'<('* || "$1" == *'>('* ]]
 }
 
 # read returns 1 on EOF before delimiter; || true prevents exit under pipefail
@@ -220,34 +210,52 @@ parse_compound() {
 # Permission matching
 # ---------------------------------------------------------------------------
 
-# Strip leading env var assignments (VAR=val cmd ...) and populate
-# the caller's candidates array via nameref.
+# Strip leading env var assignments (VAR=val cmd ...).
+# Populates _STRIP_CANDIDATES global with original and stripped forms.
+_STRIP_CANDIDATES=()
 strip_env_vars() {
   local full_command="$1"
-  local -n out_ref=$2
   local stripped="$full_command"
 
-  while [[ "$stripped" =~ ^[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+(.*) ]]; do
-    stripped="${BASH_REMATCH[1]}"
+  while [[ "$stripped" =~ ^[A-Za-z_][A-Za-z0-9_]*=(\"[^\"]*\"|\'[^\']*\'|[^[:space:]]*)[[:space:]]+(.*) ]]; do
+    stripped="${BASH_REMATCH[2]}"
   done
 
-  out_ref=("$full_command")
-  [[ "$stripped" != "$full_command" ]] && out_ref+=("$stripped")
+  _STRIP_CANDIDATES=("$full_command")
+  [[ "$stripped" != "$full_command" ]] && _STRIP_CANDIDATES+=("$stripped")
+
+  # Strip wrapper commands (env, sudo, etc.)
+  local wrapper_cmds="env exec nice nohup timeout sudo su xargs chroot strace ltrace unshare"
+  local w
+  while true; do
+    local first="${stripped%%[[:space:]]*}"
+    local found=false
+    for w in $wrapper_cmds; do
+      if [[ "$first" == "$w" ]]; then
+        stripped="${stripped#"$w"}"
+        stripped="${stripped#"${stripped%%[![:space:]]*}"}"
+        found=true
+        break
+      fi
+    done
+    $found || break
+  done
+  [[ "$stripped" != "$full_command" && "$stripped" != "${_STRIP_CANDIDATES[${#_STRIP_CANDIDATES[@]}-1]}" ]] && _STRIP_CANDIDATES+=("$stripped")
 }
 
-# Check if a command matches any prefix in the given list.
+# Check if a command matches any prefix. Prefixes passed as positional args.
 matches_prefix_list() {
   local full_command="$1"
-  local -n list_ref=$2
-  local label="${3:-}"
+  local label="${2:-}"
+  shift 2
 
-  [[ ${#list_ref[@]} -eq 0 ]] && return 1
+  [[ $# -eq 0 ]] && return 1
 
-  local -a candidates=()
-  strip_env_vars "$full_command" candidates
+  strip_env_vars "$full_command"
 
-  for cmd in "${candidates[@]}"; do
-    for prefix in "${list_ref[@]}"; do
+  local cmd prefix
+  for cmd in "${_STRIP_CANDIDATES[@]}"; do
+    for prefix in "$@"; do
       if [[ "$cmd" == "$prefix" ]] || [[ "$cmd" == "$prefix "* ]] || [[ "$cmd" == "$prefix/"* ]]; then
         debug "MATCH ($label): '$cmd' -> '$prefix'"
         return 0
@@ -261,17 +269,16 @@ matches_prefix_list() {
 # Returns: 0=allowed, 1=not allowed (denied or unknown)
 is_allowed() {
   local cmd="$1"
-  if matches_prefix_list "$cmd" denied_prefixes "deny"; then
+  if matches_prefix_list "$cmd" "deny" ${denied_prefixes[@]+"${denied_prefixes[@]}"}; then
     return 1
   fi
-  matches_prefix_list "$cmd" allowed_prefixes "allow"
+  matches_prefix_list "$cmd" "allow" "${allowed_prefixes[@]}"
 }
 
-# Check all commands in the given array. Returns 0 only if every one is allowed.
+# Check all commands (passed as args). Returns 0 only if every one is allowed.
 all_allowed() {
-  local -n cmds_ref=$1
-
-  for cmd in "${cmds_ref[@]}"; do
+  local cmd
+  for cmd in "$@"; do
     [[ -z "$cmd" ]] && continue
     if ! is_allowed "$cmd"; then
       debug "Not all commands approved"
@@ -281,14 +288,14 @@ all_allowed() {
   return 0
 }
 
-# Check if any command in the given array matches the deny list.
+# Check if any command (passed as args) matches the deny list.
 any_denied() {
-  local -n cmds_ref=$1
   [[ ${#denied_prefixes[@]} -eq 0 ]] && return 1
 
-  for cmd in "${cmds_ref[@]}"; do
+  local cmd
+  for cmd in "$@"; do
     [[ -z "$cmd" ]] && continue
-    if matches_prefix_list "$cmd" denied_prefixes "deny"; then
+    if matches_prefix_list "$cmd" "deny" ${denied_prefixes[@]+"${denied_prefixes[@]}"}; then
       debug "Denied segment found: $cmd"
       return 0
     fi
@@ -307,7 +314,7 @@ any_denied() {
 run_smart_approve() {
   local command="$1"
   local cwd="$2"
-  local -n __smart_approve_cmds=$3
+  shift 2
 
   [[ "${SMART_APPROVE_ENABLED:-true}" != "true" ]] && return 1
 
@@ -317,13 +324,13 @@ run_smart_approve() {
   local smart_output
   if [[ "${#denied_prefixes[@]}" -gt 0 ]]; then
     smart_output=$(
-      { printf '%s\n' "${__smart_approve_cmds[@]}"; echo "---DENY_LIST---"; printf '%s\n' "${denied_prefixes[@]}"; } | \
+      { printf '%s\n' "$@"; echo "---DENY_LIST---"; printf '%s\n' ${denied_prefixes[@]+"${denied_prefixes[@]}"}; } | \
         "$script_dir/smart-approve.sh" \
           --command "$command" \
           --cwd "$cwd" 2>/dev/null
     ) || true
   else
-    smart_output=$(printf '%s\n' "${__smart_approve_cmds[@]}" | \
+    smart_output=$(printf '%s\n' "$@" | \
       "$script_dir/smart-approve.sh" \
         --command "$command" \
         --cwd "$cwd" 2>/dev/null) || true
@@ -406,7 +413,7 @@ main() {
       printf '%s\n' "$cmd"
     else
       local -a cmds=()
-      mapfile -d '' cmds < <(parse_compound "$cmd")
+      while IFS= read -r -d '' c; do cmds+=("$c"); done < <(parse_compound "$cmd")
       for c in "${cmds[@]}"; do
         [[ -n "$c" ]] && printf '%s\n' "$c"
       done
@@ -444,30 +451,32 @@ main() {
   if ! needs_compound_parse "$command"; then
     debug "Simple command"
     is_allowed "$command" && approve
+    # Guard: deny list must be checked before AI approval (C2)
+    any_denied "$command" && deny "Command matches deny list"
     # Stage 2: Smart approval for unknown simple commands
     cwd=$(jq -r '.cwd // empty' <<< "$input")
     local -a simple_cmds=("$command")
-    run_smart_approve "$command" "$cwd" simple_cmds
+    run_smart_approve "$command" "$cwd" "$command"
     exit 0
   fi
 
   # Compound command — parse into segments and check each
   debug "Compound command"
   local -a extracted_commands=()
-  mapfile -d '' extracted_commands < <(parse_compound "$command")
+  while IFS= read -r -d '' c; do extracted_commands+=("$c"); done < <(parse_compound "$command")
 
   # Parse failure or empty result — fall through to prompt (don't auto-approve
   # unparseable commands that may contain dangerous sub-commands)
   [[ ${#extracted_commands[@]} -eq 0 || -z "${extracted_commands[0]}" ]] && exit 0
 
-  all_allowed extracted_commands && approve
+  all_allowed "${extracted_commands[@]}" && approve
 
   # Not all approved: actively deny if any segment is in the deny list.
-  any_denied extracted_commands && deny "Compound command contains a denied sub-command"
+  any_denied "${extracted_commands[@]}" && deny "Compound command contains a denied sub-command"
 
   # Stage 2: Smart approval for unknown compound commands
   cwd=$(jq -r '.cwd // empty' <<< "$input")
-  run_smart_approve "$command" "$cwd" extracted_commands
+  run_smart_approve "$command" "$cwd" "${extracted_commands[@]}"
 
   exit 0
 }

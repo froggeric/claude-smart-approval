@@ -253,3 +253,10 @@ load test_helper
   run_parse "nvm use && yarn test"
   assert_commands "nvm use" "yarn test"
 }
+
+# -- newline-separated commands --
+
+@test "parse: newline-separated commands extracted separately" {
+  run_parse $'echo hello\nrm -rf /'
+  assert_commands "echo hello" "rm -rf /"
+}

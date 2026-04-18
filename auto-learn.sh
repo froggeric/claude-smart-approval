@@ -49,9 +49,12 @@ validate_pattern() {
 
   # Reject dangerous commands
   local -a dangerous_cmds=(rm dd mkfs chmod chown chgrp kill pkill killall
-    reboot halt shutdown poweroff init systemctl)
+    reboot halt shutdown poweroff init systemctl
+    eval exec bash sh zsh sudo su source
+    python python3 perl ruby node)
+  local cmd_basename="${cmd_prefix##*/}"
   for dangerous in "${dangerous_cmds[@]}"; do
-    if [[ "$cmd_prefix" == "$dangerous" ]]; then
+    if [[ "$cmd_prefix" == "$dangerous" || "$cmd_basename" == "$dangerous" ]]; then
       return 1
     fi
   done
@@ -104,7 +107,9 @@ lock_acquire() {
       local lock_age
       lock_age=$(( $(date +%s) - $(stat -f %m "$lockdir" 2>/dev/null || stat -c %Y "$lockdir" 2>/dev/null || echo 0) ))
       if [[ "$lock_age" -gt 30 ]]; then
-        rm -rf "$lockdir"
+        local stale_backup="${lockdir}.stale.$$"
+        mv "$lockdir" "$stale_backup" 2>/dev/null || continue
+        rm -rf "$stale_backup"
         continue
       fi
     fi

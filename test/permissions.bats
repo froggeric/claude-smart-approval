@@ -92,12 +92,12 @@ load test_helper
 
 @test "perm: deny takes precedence over allow" {
   run_hook "rm -rf /" '["Bash(rm *)"]' '["Bash(rm *)"]'
-  assert_fallthrough
+  assert_denied
 }
 
 @test "perm: deny blocks specific command" {
   run_hook "rm -rf /" '["Bash(rm *)"]' '["Bash(rm -rf *)"]'
-  assert_fallthrough
+  assert_denied
 }
 
 @test "perm: deny prefix does not block other commands" {
@@ -146,5 +146,39 @@ load test_helper
 
 @test "perm: compound deny does not affect allowed-only compound" {
   run_hook "ls | grep foo" '["Bash(ls *)","Bash(grep *)"]' '["Bash(rm *)"]'
+  assert_approved
+}
+
+# -- quoted env var stripping (I12) --
+
+@test "perm: double-quoted env var stripped for matching" {
+  run_hook 'FOO="bar baz" ls' '["Bash(ls *)"]'
+  assert_approved
+}
+
+@test "perm: single-quoted env var stripped for matching" {
+  run_hook "FOO='bar baz' ls" '["Bash(ls *)"]'
+  assert_approved
+}
+
+# -- command wrapper stripping (I13) --
+
+@test "perm: env wrapper stripped for matching" {
+  run_hook "env ls -la" '["Bash(ls *)"]'
+  assert_approved
+}
+
+@test "perm: nice wrapper stripped for matching" {
+  run_hook "nice ls" '["Bash(ls *)"]'
+  assert_approved
+}
+
+@test "perm: sudo wrapper stripped for matching" {
+  run_hook "sudo ls" '["Bash(ls *)"]'
+  assert_approved
+}
+
+@test "perm: multiple wrappers stripped" {
+  run_hook "env sudo ls" '["Bash(ls *)"]'
   assert_approved
 }

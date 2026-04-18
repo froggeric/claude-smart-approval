@@ -1,6 +1,6 @@
 # claude-smart-approval
 
-[![Version](https://img.shields.io/badge/version-2.0.2-blue.svg)](https://github.com/froggeric/claude-smart-approval/blob/master/CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.0.3-blue.svg)](https://github.com/froggeric/claude-smart-approval/blob/master/CHANGELOG.md)
 [![Tests](https://img.shields.io/badge/tests-150%20passing-brightgreen.svg)](https://github.com/froggeric/claude-smart-approval/tree/master/test)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](https://github.com/froggeric/claude-smart-approval/blob/master/LICENSE)
 [![Claude Code Hooks](https://img.shields.io/badge/Claude%20Code-hooks-orange.svg)](https://docs.anthropic.com/en/docs/claude-code/hooks)
@@ -182,7 +182,7 @@ echo '{"tool_input":{"command":"ls | grep foo"}}' | ./auto-approve.sh --debug
 <details>
 <summary>Testing</summary>
 
-145 tests. Requires [BATS](https://bats-core.readthedocs.io/).
+182 tests. Requires [BATS](https://bats-core.readthedocs.io/).
 
 ```bash
 bats test/
@@ -209,4 +209,4 @@ See [DESIGN.md](DESIGN.md) for architecture, file structure, and rationale (why 
 
 ## Credits
 
-Based on [claude-code-auto-approve](https://github.com/oryband/claude-code-auto-approve) (MIT) by Ory Band, via [claude-code-plus](https://github.com/AbdelrahmanHafez/claude-code-plus) (MIT) by Abdelrahman Hafez. Extended with deny list support, active deny for compounds, fast path for simple commands, settings layer support, env var stripping, AI-powered smart approval, auto-learning, and a 145-test suite.
+Based on [claude-code-auto-approve](https://github.com/oryband/claude-code-auto-approve) (MIT) by Ory Band, via [claude-code-plus](https://github.com/AbdelrahmanHafez/claude-code-plus) (MIT) by Abdelrahman Hafez. Extended with deny list support, active deny for compounds, fast path for simple commands, settings layer support, env var stripping, AI-powered smart approval, auto-learning, and a 182-test suite.

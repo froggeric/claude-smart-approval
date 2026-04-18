@@ -86,7 +86,7 @@ echo "$PROMPT" | claude -p \
 
 ## Test Suite
 
-145 tests in `test/` (all passing with bash 5.3+):
+182 tests in `test/` (all passing with bash 3.2+):
 - `parsing.bats`: Command splitting tests (41 tests)
 - `permissions.bats`: Allow/deny matching tests (26 tests)
 - `security.bats`: Security edge cases (31 tests)
@@ -137,7 +137,7 @@ The smart approval prompt in `smart-approve.sh` (`build_prompt()`) was optimized
 
 ## Dependencies
 
-- bash 5.3+ (script auto-re-execs with Homebrew bash on macOS)
+- bash 3.2+ (main scripts compatible with system bash on macOS)
 - shfmt (compound command AST parsing)
 - jq (JSON processing + AST walking)
 - claude CLI (for smart approval stage, optional)

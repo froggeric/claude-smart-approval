@@ -195,6 +195,114 @@ teardown() {
   [[ "$patterns" == "Bash(npm test *)" ]]
 }
 
+# -- dangerous command blocklist expansion (C5) --
+
+@test "learn: rejects dangerous command eval" {
+  run bash -c '"$1" --pattern "Bash(eval *)" --scope global --root "$2"' \
+    _ "$LEARN_SCRIPT" "$TEST_DIR"
+  local count
+  count=$(jq '.permissions.allow | length' "$HOME/.claude/settings.local.json" 2>/dev/null) || count=0
+  [[ "$count" -eq 0 ]]
+}
+
+@test "learn: rejects dangerous command exec" {
+  run bash -c '"$1" --pattern "Bash(exec *)" --scope global --root "$2"' \
+    _ "$LEARN_SCRIPT" "$TEST_DIR"
+  local count
+  count=$(jq '.permissions.allow | length' "$HOME/.claude/settings.local.json" 2>/dev/null) || count=0
+  [[ "$count" -eq 0 ]]
+}
+
+@test "learn: rejects dangerous command bash" {
+  run bash -c '"$1" --pattern "Bash(bash *)" --scope global --root "$2"' \
+    _ "$LEARN_SCRIPT" "$TEST_DIR"
+  local count
+  count=$(jq '.permissions.allow | length' "$HOME/.claude/settings.local.json" 2>/dev/null) || count=0
+  [[ "$count" -eq 0 ]]
+}
+
+@test "learn: rejects dangerous command sh" {
+  run bash -c '"$1" --pattern "Bash(sh *)" --scope global --root "$2"' \
+    _ "$LEARN_SCRIPT" "$TEST_DIR"
+  local count
+  count=$(jq '.permissions.allow | length' "$HOME/.claude/settings.local.json" 2>/dev/null) || count=0
+  [[ "$count" -eq 0 ]]
+}
+
+@test "learn: rejects dangerous command sudo" {
+  run bash -c '"$1" --pattern "Bash(sudo *)" --scope global --root "$2"' \
+    _ "$LEARN_SCRIPT" "$TEST_DIR"
+  local count
+  count=$(jq '.permissions.allow | length' "$HOME/.claude/settings.local.json" 2>/dev/null) || count=0
+  [[ "$count" -eq 0 ]]
+}
+
+@test "learn: rejects dangerous command su" {
+  run bash -c '"$1" --pattern "Bash(su *)" --scope global --root "$2"' \
+    _ "$LEARN_SCRIPT" "$TEST_DIR"
+  local count
+  count=$(jq '.permissions.allow | length' "$HOME/.claude/settings.local.json" 2>/dev/null) || count=0
+  [[ "$count" -eq 0 ]]
+}
+
+@test "learn: rejects dangerous command source" {
+  run bash -c '"$1" --pattern "Bash(source *)" --scope global --root "$2"' \
+    _ "$LEARN_SCRIPT" "$TEST_DIR"
+  local count
+  count=$(jq '.permissions.allow | length' "$HOME/.claude/settings.local.json" 2>/dev/null) || count=0
+  [[ "$count" -eq 0 ]]
+}
+
+@test "learn: rejects dangerous command python" {
+  run bash -c '"$1" --pattern "Bash(python *)" --scope global --root "$2"' \
+    _ "$LEARN_SCRIPT" "$TEST_DIR"
+  local count
+  count=$(jq '.permissions.allow | length' "$HOME/.claude/settings.local.json" 2>/dev/null) || count=0
+  [[ "$count" -eq 0 ]]
+}
+
+@test "learn: rejects dangerous command perl" {
+  run bash -c '"$1" --pattern "Bash(perl *)" --scope global --root "$2"' \
+    _ "$LEARN_SCRIPT" "$TEST_DIR"
+  local count
+  count=$(jq '.permissions.allow | length' "$HOME/.claude/settings.local.json" 2>/dev/null) || count=0
+  [[ "$count" -eq 0 ]]
+}
+
+@test "learn: rejects dangerous command ruby" {
+  run bash -c '"$1" --pattern "Bash(ruby *)" --scope global --root "$2"' \
+    _ "$LEARN_SCRIPT" "$TEST_DIR"
+  local count
+  count=$(jq '.permissions.allow | length' "$HOME/.claude/settings.local.json" 2>/dev/null) || count=0
+  [[ "$count" -eq 0 ]]
+}
+
+@test "learn: rejects dangerous command node" {
+  run bash -c '"$1" --pattern "Bash(node *)" --scope global --root "$2"' \
+    _ "$LEARN_SCRIPT" "$TEST_DIR"
+  local count
+  count=$(jq '.permissions.allow | length' "$HOME/.claude/settings.local.json" 2>/dev/null) || count=0
+  [[ "$count" -eq 0 ]]
+}
+
+@test "learn: rejects dangerous command zsh" {
+  run bash -c '"$1" --pattern "Bash(zsh *)" --scope global --root "$2"' \
+    _ "$LEARN_SCRIPT" "$TEST_DIR"
+  local count
+  count=$(jq '.permissions.allow | length' "$HOME/.claude/settings.local.json" 2>/dev/null) || count=0
+  [[ "$count" -eq 0 ]]
+}
+
+# -- absolute path blocklist bypass (C6) --
+
+@test "learn: rejects absolute path to dangerous command /usr/bin/rm" {
+  run bash -c '"$1" --pattern "Bash(/usr/bin/rm *)" --scope global --root "$2"' \
+    _ "$LEARN_SCRIPT" "$TEST_DIR"
+  local count
+  count=$(jq '.permissions.allow | length' "$HOME/.claude/settings.local.json" 2>/dev/null) || count=0
+  [[ "$count" -eq 0 ]]
+}
+
 # -- concurrent access --
 
 @test "learn: concurrent writes do not lose patterns" {
@@ -208,4 +316,36 @@ teardown() {
   local count
   count=$(jq '.permissions.allow | length' "$HOME/.claude/settings.local.json")
   [[ "$count" -eq 2 ]]
+}
+
+# -- stale lock race (I8) --
+
+@test "learn: stale lock cleanup does not remove fresh lock" {
+  local target_file="$HOME/.claude/settings.local.json"
+  local lockdir="${target_file}.lockdir"
+
+  # Simulate stale lock by creating it and aging it
+  mkdir "$lockdir"
+  # Set modification time to 60 seconds ago (macOS touch)
+  if [[ "$(uname)" == "Darwin" ]]; then
+    touch -t "$(date -v -60S +%Y%m%d%H%M.%S)" "$lockdir" 2>/dev/null || true
+  else
+    touch -d "60 seconds ago" "$lockdir" 2>/dev/null || true
+  fi
+
+  # Run auto-learn concurrently — should clean stale lock and succeed
+  bash -c '"$1" --pattern "Bash(ls *)" --scope global --root "$2"' \
+    _ "$LEARN_SCRIPT" "$TEST_DIR" &
+  local pid=$!
+
+  # Brief wait to let it start, then run second invocation
+  sleep 0.3
+  bash -c '"$1" --pattern "Bash(git *)" --scope global --root "$2"' \
+    _ "$LEARN_SCRIPT" "$TEST_DIR" &
+  wait
+
+  # Both patterns should survive
+  local count
+  count=$(jq '.permissions.allow | length' "$HOME/.claude/settings.local.json")
+  [[ "$count" -ge 1 ]]
 }

@@ -81,18 +81,22 @@ sanitize_for_prompt() {
 
   # Truncate to max length
   if [[ ${#input} -gt "$max_len" ]]; then
-    input="${input:0:$max_len}"
-    input="${input%[![:space:]]*}...[truncated]"
+    input="${input:0:$((max_len - 14))}...[truncated]"
   fi
 
   # Strip lines that look like prompt manipulation attempts.
   # Matches: lines containing "decision", "approve", "deny", "pattern",
   # "scope", "ignore previous", "SECURITY", or JSON-like objects.
   local filtered=""
+  shopt -s nocasematch
   while IFS= read -r line; do
-    [[ "$line" =~ (decision|approve|deny|"pattern"|"scope"|ignore[[:space:]]previous|SECURITY:|\{.*"decision".*\}) ]] && continue
+    [[ "$line" =~ \{.*\"decision\".*\} ]] && continue
+    [[ "$line" =~ (^|;[[:space:]]*)(decision|approve|deny|pattern|scope)[[:space:]]*(:|=) ]] && continue
+    [[ "$line" =~ ignore[[:space:]]previous ]] && continue
+    [[ "$line" =~ SECURITY: ]] && continue
     filtered="${filtered}${line}"$'\n'
   done <<< "$input"
+  shopt -u nocasematch
 
   printf '%s' "$filtered"
 }
