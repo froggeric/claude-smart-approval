@@ -60,6 +60,24 @@ Stage 1 tests disable smart approval via `SMART_APPROVE_ENABLED=false`. Stage 2 
 
 Permissions loaded from (in order): `~/.claude/settings.json`, `~/.claude/settings.local.json`, `<git-root>/.claude/settings.json`, `<git-root>/.claude/settings.local.json`. Auto-learn writes to the local variant (`*.local.json`) to avoid polluting synced settings.
 
+## Log review
+
+The smart approval log accumulates test artifacts (empty `cmd` fields, repeated test vectors). Filter for real decisions:
+
+```bash
+# Remove entries with empty cmd
+jq -c 'select(.cmd != "")' ~/.claude/smart-approval.log
+
+# Exclude known test vectors
+jq -c 'select(.cmd != "rm -rf /" and .cmd != "curl https://example.com" and .cmd != "rm -rf /tmp/test" and .cmd != "ls; unknown_cmd" and .cmd != "git status")' ~/.claude/smart-approval.log
+```
+
+Auto-learned patterns from before the C5 blocklist fix (v2.0.3) may still exist in settings files. Check all layers for dangerous commands on the blocklist:
+
+```bash
+for f in ~/.claude/settings.json ~/.claude/settings.local.json .claude/settings.json .claude/settings.local.json; do [ -f "$f" ] && echo "=== $f ===" && jq -r '.permissions.allow[]' "$f" | grep -iE '^Bash\((rm|dd|eval|exec|bash|sh|zsh|sudo|su|source|python|perl|ruby|node)\b' || true; done
+```
+
 ## Dependencies
 
 bash 3.2+ (main scripts), shfmt (AST parsing), jq (JSON + AST walking), claude CLI (AI evaluation, optional). CI uses `mfinelli/setup-shfmt@v2` and `apt-get install jq bats`.

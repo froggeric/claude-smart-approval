@@ -37,6 +37,14 @@ Without these, the hook silently falls back to Claude Code's normal permission p
 > ```bash
 > for f in ~/.claude/settings.json ~/.claude/settings.local.json .claude/settings.json .claude/settings.local.json; do [ -f "$f" ] && jq 'del(.permissions.allow[] | select(test("^Bash\\((ba|z)?sh \\*\\)$")))' "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
 > ```
+>
+> **Remove other dangerous commands.** Commands like `rm`, `sudo`, `eval`, `python`, and `node` can execute arbitrary code or destructive operations. If these are in your allow list, auto-approve (Stage 1) will match them without evaluation:
+>
+> ```bash
+> for f in ~/.claude/settings.json ~/.claude/settings.local.json .claude/settings.json .claude/settings.local.json; do
+>   [ -f "$f" ] && jq 'del(.permissions.allow[] | select(test("^Bash\\((rm|dd|mkfs|chmod|chown|chgrp|kill|pkill|killall|reboot|halt|shutdown|poweroff|init|systemctl|eval|exec|bash|sh|zsh|sudo|su|source|python3?|perl|ruby|node) ?\\*?\\)?$")))' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+> done
+> ```
 
 ### Option A: Plugin marketplace (recommended)
 
