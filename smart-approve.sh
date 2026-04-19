@@ -161,6 +161,7 @@ Rules:
 - Evaluate what the command actually EXECUTES, not what text it prints.
 - echo and printf arguments are just strings being printed — they do not execute.
 - Comments (# ...) are ignored by the shell — they do not affect execution.
+- Hash (#) inside quoted arguments is string data for the target program (python -c "...", awk '...'), not a shell comment. Do not flag it as obfuscation.
 - When uncertain, respond with "ask" and explain your concern.
 - CRITICAL: Do NOT suggest a pattern that matches anything in the user's deny list.
 

@@ -68,6 +68,13 @@ Permissions loaded from (in order): `~/.claude/settings.json`, `~/.claude/settin
 
 ## Log review
 
+Log format: JSONL with fields `ts`, `cmd`, `decision`, `reason`, `pattern`, `scope`. Test artifacts have empty `cmd` or canned vectors (`rm -rf /`, `curl https://example.com`, `rm -rf /tmp/test`, `ls; unknown_cmd`, `git status`).
+
+To clean test entries from the logs:
+```bash
+jq -c 'select(.cmd != "" and .cmd != "rm -rf /" and .cmd != "curl https://example.com" and .cmd != "rm -rf /tmp/test" and .cmd != "ls; unknown_cmd" and .cmd != "git status")' ~/.claude/smart-approval.log > /tmp/smart-approval-clean.json && mv /tmp/smart-approval-clean.json ~/.claude/smart-approval.log
+```
+
 The smart approval log accumulates test artifacts (empty `cmd` fields, repeated test vectors). Filter for real decisions:
 
 ```bash

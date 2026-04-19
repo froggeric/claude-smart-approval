@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.5] - 2026-04-19
+
+### Fixed
+
+- **False denial of Python/awk commands with # in quoted arguments.** Commands like `python3 -c "x = 1  # init"` were denied with reason "Newline followed by # inside a quoted argument can hide arguments from path validation". The AI model treated `#` inside quoted strings as potential shell comment obfuscation. Added prompt rule clarifying that `#` inside quoted arguments is string data for the target program, not a shell comment.
+
+### Added
+
+- **Prompt eval test cases** for `#` in quoted arguments: multi-line Python with inline comments (`edg-08`) and Python one-liner with trailing comment (`edg-09`). Suite now 47 cases (from 45).
+
 ## [2.0.4] - 2026-04-19
 
 ### Added
@@ -127,6 +137,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - CI: install bats via apt instead of npm. ([`da37567`])
 
+[2.0.5]: https://github.com/froggeric/claude-smart-approval/compare/v2.0.4...v2.0.5
 [2.0.4]: https://github.com/froggeric/claude-smart-approval/compare/v2.0.3...v2.0.4
 [2.0.3]: https://github.com/froggeric/claude-smart-approval/compare/v2.0.2...v2.0.3
 [2.0.2]: https://github.com/froggeric/claude-smart-approval/compare/v2.0.1...v2.0.2
