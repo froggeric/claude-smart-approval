@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.4] - 2026-04-19
+
+### Added
+
+- **Stage 1 decision logging.** Prefix-matched decisions (allow/deny) are now logged to `~/.claude/auto-approve.log` as structured JSON with timestamp, command, decision, matched prefix, and type (simple/compound). Configurable via `AUTO_APPROVE_LOG_FILE` and `AUTO_APPROVE_LOG_MAX_LINES` environment variables. Set `AUTO_APPROVE_LOG_FILE=""` to disable.
+
 ## [2.0.3] - 2026-04-18
 
 ### Fixed
@@ -121,6 +127,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - CI: install bats via apt instead of npm. ([`da37567`])
 
+[2.0.4]: https://github.com/froggeric/claude-smart-approval/compare/v2.0.3...v2.0.4
 [2.0.3]: https://github.com/froggeric/claude-smart-approval/compare/v2.0.2...v2.0.3
 [2.0.2]: https://github.com/froggeric/claude-smart-approval/compare/v2.0.1...v2.0.2
 [2.0.1]: https://github.com/froggeric/claude-smart-approval/compare/v2.0.0...v2.0.1

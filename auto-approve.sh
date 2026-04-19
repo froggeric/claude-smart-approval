@@ -16,6 +16,10 @@ set -uo pipefail
 DEBUG=false
 readonly ALLOW_JSON='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}'
 
+# Stage 1 decision logging
+AUTO_APPROVE_LOG_FILE="${AUTO_APPROVE_LOG_FILE:-$HOME/.claude/auto-approve.log}"
+AUTO_APPROVE_LOG_MAX_LINES="${AUTO_APPROVE_LOG_MAX_LINES:-1000}"
+
 debug() { if $DEBUG; then printf '[approve-compound] %s\n' "$*" >&2; fi; }
 approve() { printf '%s\n' "$ALLOW_JSON"; exit 0; }
 deny() {
@@ -24,6 +28,34 @@ deny() {
     systemMessage: $msg
   }' >&2
   exit 2
+}
+
+# shellcheck disable=SC2034
+_MATCHED_PREFIX=""
+
+log_stage1_decision() {
+  [[ -n "${AUTO_APPROVE_LOG_FILE:-}" ]] || return 0
+  local command="$1" decision="$2" matched_prefix="${3:-}" cmd_type="${4:-}"
+  local ts
+  ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "unknown")
+
+  # Append structured JSON line; graceful failure if path doesn't exist
+  jq -cn \
+    --arg ts "$ts" \
+    --arg cmd "$command" \
+    --arg dec "$decision" \
+    --arg prefix "$matched_prefix" \
+    --arg ctype "$cmd_type" \
+    '{ts:$ts, cmd:$cmd, decision:$dec, matched_prefix:$prefix, type:$ctype}' \
+    >> "$AUTO_APPROVE_LOG_FILE" 2>/dev/null || return 0
+
+  # Rotate if over limit
+  local line_count
+  line_count=$(wc -l < "$AUTO_APPROVE_LOG_FILE" 2>/dev/null | tr -d ' ')
+  if [[ "$line_count" -gt "${AUTO_APPROVE_LOG_MAX_LINES}" ]]; then
+    local tmp
+    tmp=$(mktemp) && tail -n "${AUTO_APPROVE_LOG_MAX_LINES}" "$AUTO_APPROVE_LOG_FILE" > "$tmp" && mv "$tmp" "$AUTO_APPROVE_LOG_FILE"
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -258,6 +290,7 @@ matches_prefix_list() {
     for prefix in "$@"; do
       if [[ "$cmd" == "$prefix" ]] || [[ "$cmd" == "$prefix "* ]] || [[ "$cmd" == "$prefix/"* ]]; then
         debug "MATCH ($label): '$cmd' -> '$prefix'"
+        _MATCHED_PREFIX="$prefix"
         return 0
       fi
     done
@@ -450,9 +483,15 @@ main() {
   # Simple command — check directly without shfmt parsing
   if ! needs_compound_parse "$command"; then
     debug "Simple command"
-    is_allowed "$command" && approve
+    if is_allowed "$command"; then
+      log_stage1_decision "$command" "allow" "$_MATCHED_PREFIX" "simple"
+      approve
+    fi
     # Guard: deny list must be checked before AI approval (C2)
-    any_denied "$command" && deny "Command matches deny list"
+    if any_denied "$command"; then
+      log_stage1_decision "$command" "deny" "$_MATCHED_PREFIX" "simple"
+      deny "Command matches deny list"
+    fi
     # Stage 2: Smart approval for unknown simple commands
     cwd=$(jq -r '.cwd // empty' <<< "$input")
     local -a simple_cmds=("$command")
@@ -469,10 +508,16 @@ main() {
   # unparseable commands that may contain dangerous sub-commands)
   [[ ${#extracted_commands[@]} -eq 0 || -z "${extracted_commands[0]}" ]] && exit 0
 
-  all_allowed "${extracted_commands[@]}" && approve
+  if all_allowed "${extracted_commands[@]}"; then
+    log_stage1_decision "$command" "allow" "$_MATCHED_PREFIX" "compound"
+    approve
+  fi
 
   # Not all approved: actively deny if any segment is in the deny list.
-  any_denied "${extracted_commands[@]}" && deny "Compound command contains a denied sub-command"
+  if any_denied "${extracted_commands[@]}"; then
+    log_stage1_decision "$command" "deny" "$_MATCHED_PREFIX" "compound"
+    deny "Compound command contains a denied sub-command"
+  fi
 
   # Stage 2: Smart approval for unknown compound commands
   cwd=$(jq -r '.cwd // empty' <<< "$input")

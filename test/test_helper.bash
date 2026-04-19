@@ -62,10 +62,10 @@ run_hook() {
   json=$(jq -n --arg cmd "$command" '{"tool_input":{"command":$cmd}}')
   # Existing tests expect Stage 1 only — disable smart approval by default
   if [[ "$deny" == "[]" ]]; then
-    SMART_APPROVE_ENABLED=false run bash -c 'printf "%s" "$1" | "$2" --permissions "$3"' \
+    SMART_APPROVE_ENABLED=false AUTO_APPROVE_LOG_FILE="" run bash -c 'printf "%s" "$1" | "$2" --permissions "$3"' \
       _ "$json" "$HOOK_SCRIPT" "$allow"
   else
-    SMART_APPROVE_ENABLED=false run bash -c 'printf "%s" "$1" | "$2" --permissions "$3" --deny "$4"' \
+    SMART_APPROVE_ENABLED=false AUTO_APPROVE_LOG_FILE="" run bash -c 'printf "%s" "$1" | "$2" --permissions "$3" --deny "$4"' \
       _ "$json" "$HOOK_SCRIPT" "$allow" "$deny"
   fi
 }
@@ -143,6 +143,7 @@ run_hook_smart() {
   json=$(jq -n --arg cmd "$command" '{"tool_input":{"command":$cmd}}')
 
   SMART_APPROVE_ENABLED=true SMART_APPROVE_AUTO_LEARN=false \
+  AUTO_APPROVE_LOG_FILE="" \
   CLAUDE_CMD="$mock_cmd" MOCK_RESPONSE="$mock_response" \
   run bash -c 'printf "%s" "$1" | "$2" --permissions "$3" --deny "$4"' \
     _ "$json" "$HOOK_SCRIPT" "$allow" "$deny"

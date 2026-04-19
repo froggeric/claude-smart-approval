@@ -47,14 +47,20 @@ Supporting files:
 
 ## Testing
 
-182 BATS tests in `test/`. Test helpers in `test/test_helper.bash`:
+191 BATS tests in `test/`. Test helpers in `test/test_helper.bash`:
 
 - `run_parse "cmd"` — test command extraction (parse mode)
 - `run_hook "cmd" '["Bash(ls *)"]'` — test Stage 1 allow/deny with `SMART_APPROVE_ENABLED=false`
 - `run_hook_smart "cmd" '[]' '[]' "$mock_response"` — test Stage 2 with mocked `claude -p`
 - `create_mock_claude` — creates a temp script that returns `$MOCK_RESPONSE`, cleaned up automatically
 
-Stage 1 tests disable smart approval via `SMART_APPROVE_ENABLED=false`. Stage 2 tests use `CLAUDE_CMD` to point at a mock and `SMART_APPROVE_AUTO_LEARN=false` to skip file writes.
+Stage 1 tests disable smart approval via `SMART_APPROVE_ENABLED=false` and Stage 1 logging via `AUTO_APPROVE_LOG_FILE=""`. Stage 2 tests use `CLAUDE_CMD` to point at a mock and `SMART_APPROVE_AUTO_LEARN=false` to skip file writes.
+
+Environment variables for logging:
+- `AUTO_APPROVE_LOG_FILE` — Stage 1 log path (default: `~/.claude/auto-approve.log`, set empty to disable)
+- `AUTO_APPROVE_LOG_MAX_LINES` — Stage 1 rotation limit (default: `1000`)
+- `SMART_APPROVE_LOG_FILE` — Stage 2 log path (default: `~/.claude/smart-approval.log`, set empty to disable)
+- `SMART_APPROVE_LOG_MAX_LINES` — Stage 2 rotation limit (default: `500`)
 
 ## Settings Layers
 

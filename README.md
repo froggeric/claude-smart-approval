@@ -1,7 +1,7 @@
 # claude-smart-approval
 
-[![Version](https://img.shields.io/badge/version-2.0.3-blue.svg)](https://github.com/froggeric/claude-smart-approval/blob/master/CHANGELOG.md)
-[![Tests](https://img.shields.io/badge/tests-150%20passing-brightgreen.svg)](https://github.com/froggeric/claude-smart-approval/tree/master/test)
+[![Version](https://img.shields.io/badge/version-2.0.4-blue.svg)](https://github.com/froggeric/claude-smart-approval/blob/master/CHANGELOG.md)
+[![Tests](https://img.shields.io/badge/tests-191%20passing-brightgreen.svg)](https://github.com/froggeric/claude-smart-approval/tree/master/test)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](https://github.com/froggeric/claude-smart-approval/blob/master/LICENSE)
 [![Claude Code Hooks](https://img.shields.io/badge/Claude%20Code-hooks-orange.svg)](https://docs.anthropic.com/en/docs/claude-code/hooks)
 
@@ -139,20 +139,37 @@ Smart approval is **on by default**. Set `SMART_APPROVE_ENABLED=false` to disabl
 | `SMART_APPROVE_MODEL` | `haiku` | Model for evaluation (fast/cheap recommended) |
 | `SMART_APPROVE_AUTO_LEARN` | `true` | Auto-learn approved patterns to settings |
 | `SMART_APPROVE_TIMEOUT` | `25` | Timeout in seconds |
-| `SMART_APPROVE_LOG_FILE` | `~/.claude/smart-approval.log` | Log file path. Set empty to disable. |
-| `SMART_APPROVE_LOG_MAX_LINES` | `500` | Max log entries before rotation |
+| `SMART_APPROVE_LOG_FILE` | `~/.claude/smart-approval.log` | Stage 2 log file path. Set empty to disable. |
+| `SMART_APPROVE_LOG_MAX_LINES` | `500` | Max Stage 2 log entries before rotation |
 | `CLAUDE_CMD` | `claude` | Path to claude CLI binary |
+| `AUTO_APPROVE_LOG_FILE` | `~/.claude/auto-approve.log` | Stage 1 log file path. Set empty to disable. |
+| `AUTO_APPROVE_LOG_MAX_LINES` | `1000` | Max Stage 1 log entries before rotation |
 
 </details>
 
 ## Audit log
 
-Every Stage 2 decision is logged as structured JSON to `~/.claude/smart-approval.log`. Each entry has timestamp, command, decision, reason, pattern, and scope.
+### Stage 1: Prefix-matched decisions
 
-Query it directly with `jq`:
+Every Stage 1 decision (allow/deny from your prefix lists) is logged as structured JSON to `~/.claude/auto-approve.log`. Each entry has timestamp, command, decision, matched prefix, and type (simple/compound).
 
 ```bash
-# Recent approvals
+# Recent prefix-matched approvals
+jq 'select(.decision=="allow")' ~/.claude/auto-approve.log
+
+# Denied commands
+jq 'select(.decision=="deny")' ~/.claude/auto-approve.log
+
+# Everything from today
+jq "select(.ts | startswith(\"$(date -u +%Y-%m-%d)\"))" ~/.claude/auto-approve.log
+```
+
+### Stage 2: AI-evaluated decisions
+
+Every Stage 2 decision is logged as structured JSON to `~/.claude/smart-approval.log`. Each entry has timestamp, command, decision, reason, pattern, and scope.
+
+```bash
+# Recent AI approvals
 jq 'select(.decision=="approve")' ~/.claude/smart-approval.log
 
 # Denied commands
@@ -190,7 +207,7 @@ echo '{"tool_input":{"command":"ls | grep foo"}}' | ./auto-approve.sh --debug
 <details>
 <summary>Testing</summary>
 
-182 tests. Requires [BATS](https://bats-core.readthedocs.io/).
+191 tests. Requires [BATS](https://bats-core.readthedocs.io/).
 
 ```bash
 bats test/
@@ -217,4 +234,4 @@ See [DESIGN.md](DESIGN.md) for architecture, file structure, and rationale (why 
 
 ## Credits
 
-Based on [claude-code-auto-approve](https://github.com/oryband/claude-code-auto-approve) (MIT) by Ory Band, via [claude-code-plus](https://github.com/AbdelrahmanHafez/claude-code-plus) (MIT) by Abdelrahman Hafez. Extended with deny list support, active deny for compounds, fast path for simple commands, settings layer support, env var stripping, AI-powered smart approval, auto-learning, and a 182-test suite.
+Based on [claude-code-auto-approve](https://github.com/oryband/claude-code-auto-approve) (MIT) by Ory Band, via [claude-code-plus](https://github.com/AbdelrahmanHafez/claude-code-plus) (MIT) by Abdelrahman Hafez. Extended with deny list support, active deny for compounds, fast path for simple commands, settings layer support, env var stripping, AI-powered smart approval, auto-learning, and a 191-test suite.
