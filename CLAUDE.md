@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Claude Code PreToolUse hook that auto-approves safe bash commands. Parses compound commands (pipes, chains, subshells) into sub-commands and checks each against allow/deny lists. Falls back to AI evaluation via `claude -p` for unknown commands.
+Claude Code PermissionRequest hook — an AI permission tier for Bash commands. Fires only when Claude Code is about to prompt the user (requires Claude Code ≥ 2.0.45; top-level headless `claude -p` sessions don't fire the event). Stage 1 parses compound commands (pipes, chains, subshells) via shfmt AST and denies anything matching the user's deny lists. Everything else falls through to Stage 2, which evaluates via `claude -p` and emits an allow/deny decision object — or nothing, which escalates to the native prompt.
 
 ## Commands
 
@@ -24,7 +24,7 @@ shellcheck -x auto-approve.sh smart-approve.sh auto-learn.sh
 # Debug a specific command's parsing
 echo 'ls | grep foo' | ./auto-approve.sh parse
 
-# Debug a full hook decision
+# Debug a full hook decision (deny gate + Stage 2 dispatch)
 echo '{"tool_input":{"command":"ls | grep foo"}}' | ./auto-approve.sh --debug
 ```
 
@@ -32,43 +32,45 @@ echo '{"tool_input":{"command":"ls | grep foo"}}' | ./auto-approve.sh --debug
 
 Three-script pipeline invoked as a Claude Code hook:
 
-1. **`auto-approve.sh`** — Entry point. Stage 1: loads permissions from settings files, parses compound commands via shfmt AST, checks each sub-command against allow/deny lists. Stage 2: dispatches to smart-approve.sh for unknown commands.
+1. **`auto-approve.sh`** — Entry point. Reentrancy-guarded (`SMART_APPROVE_ACTIVE`). Stage 1: loads deny rules from settings files, parses compound commands via shfmt AST, denies any matching segment (stdout decision object + exit 0 — PermissionRequest ignores exit codes). Stage 2: dispatches everything else to smart-approve.sh and relays its decision.
 
-2. **`smart-approve.sh`** — AI evaluation. Builds a security classification prompt, calls `claude -p --model haiku`, parses the JSON response into allow/deny/ask decisions. Includes prompt injection sanitization.
+2. **`smart-approve.sh`** — AI evaluation. Builds a security classification prompt, calls `claude -p --model haiku --settings '{"disableAllHooks":true}'` (the old `--bare` flag skipped OAuth/keychain auth), parses the JSON response into allow/deny/silent decisions. Includes prompt injection sanitization. Silence (ask/failure) = native prompt.
 
 3. **`auto-learn.sh`** — Pattern persistence. Normalizes approved patterns into `Bash(cmd *)` format, validates they aren't dangerous, deduplicates across settings layers, writes to the correct file with mutex locking.
 
 Supporting files:
 - `eval-prompt.sh` — Prompt evaluation harness for testing prompt templates
 - `prompts/` — Candidate prompt templates
-- `test/prompt-eval-suite.json` — 45 test cases across 7 categories for prompt scoring
-- `hooks/hooks.json` — Plugin hook registration
+- `test/prompt-eval-suite.json` — 47 test cases across 7 categories for prompt scoring
+- `hooks/hooks.json` — Plugin hook registration (PermissionRequest event)
 - `.claude-plugin/plugin.json` — Plugin metadata
 
 ## Testing
 
-191 BATS tests in `test/`. Test helpers in `test/test_helper.bash`:
+194 BATS tests in `test/`. Test helpers in `test/test_helper.bash`:
 
 - `run_parse "cmd"` — test command extraction (parse mode)
-- `run_hook "cmd" '["Bash(ls *)"]'` — test Stage 1 allow/deny with `SMART_APPROVE_ENABLED=false`
-- `run_hook_smart "cmd" '[]' '[]' "$mock_response"` — test Stage 2 with mocked `claude -p`
+- `run_hook "cmd" '["Bash(rm *)"]'` — test Stage 1 deny gate; the second argument is the DENY list and is always passed (even `[]`) so real settings files are never read
+- `run_hook_smart "cmd" '[]' "$mock_response"` — test Stage 2 with mocked `claude -p`
 - `create_mock_claude` — creates a temp script that returns `$MOCK_RESPONSE`, cleaned up automatically
 
-Stage 1 tests disable smart approval via `SMART_APPROVE_ENABLED=false` and Stage 1 logging via `AUTO_APPROVE_LOG_FILE=""`. Stage 2 tests use `CLAUDE_CMD` to point at a mock and `SMART_APPROVE_AUTO_LEARN=false` to skip file writes.
+Stage 1 tests disable smart approval via `SMART_APPROVE_ENABLED=false`, the log via `AUTO_APPROVE_LOG_FILE=""`, and the reentrancy guard via `SMART_APPROVE_ACTIVE=` (empty — the guard checks non-empty). Stage 2 tests use `CLAUDE_CMD` to point at a mock and `SMART_APPROVE_AUTO_LEARN=false` to skip file writes.
+
+Allow decisions only exist via Stage 2 (there is no allow fast path); `assert_fallthrough` requires exit 0 with completely empty stdout; `assert_denied` requires exit 0 plus the deny decision object on stdout.
 
 Environment variables for logging:
-- `AUTO_APPROVE_LOG_FILE` — Stage 1 log path (default: `~/.claude/auto-approve.log`, set empty to disable)
+- `AUTO_APPROVE_LOG_FILE` — Stage 1 deny log path (default: `~/.claude/auto-approve.log`, set empty to disable)
 - `AUTO_APPROVE_LOG_MAX_LINES` — Stage 1 rotation limit (default: `1000`)
 - `SMART_APPROVE_LOG_FILE` — Stage 2 log path (default: `~/.claude/smart-approval.log`, set empty to disable)
 - `SMART_APPROVE_LOG_MAX_LINES` — Stage 2 rotation limit (default: `500`)
 
 ## Settings Layers
 
-Permissions loaded from (in order): `~/.claude/settings.json`, `~/.claude/settings.local.json`, `<git-root>/.claude/settings.json`, `<git-root>/.claude/settings.local.json`. Auto-learn writes to the local variant (`*.local.json`) to avoid polluting synced settings.
+Deny rules (and Stage 2's auto-learned allow patterns) are read from (in order): `~/.claude/settings.json`, `~/.claude/settings.local.json`, `<git-root>/.claude/settings.json`, `<git-root>/.claude/settings.local.json`. Auto-learn writes to the local variant (`*.local.json`) to avoid polluting synced settings.
 
 ## Log review
 
-Log format: JSONL with fields `ts`, `cmd`, `decision`, `reason`, `pattern`, `scope`. Test artifacts have empty `cmd` or canned vectors (`rm -rf /`, `curl https://example.com`, `rm -rf /tmp/test`, `ls; unknown_cmd`, `git status`).
+Stage 1 log (`auto-approve.log`) is deny-only — JSONL with fields `ts`, `cmd`, `decision`, `matched_prefix`, `scope`-less `type` (simple/compound). Allow decisions are Stage 2's and live in `smart-approval.log` (`ts`, `cmd`, `decision` ∈ approve/deny/ask, `reason`, `pattern`, `scope`). Test artifacts have empty `cmd` or canned vectors (`rm -rf /`, `curl https://example.com`, `rm -rf /tmp/test`, `ls; unknown_cmd`, `git status`).
 
 To clean test entries from the logs:
 ```bash
@@ -93,4 +95,4 @@ for f in ~/.claude/settings.json ~/.claude/settings.local.json .claude/settings.
 
 ## Dependencies
 
-bash 3.2+ (main scripts), shfmt (AST parsing), jq (JSON + AST walking), claude CLI (AI evaluation, optional). CI uses `mfinelli/setup-shfmt@v2` and `apt-get install jq bats`.
+bash 3.2+ (main scripts), shfmt (AST parsing), jq (JSON + AST walking), claude CLI (AI evaluation, optional). CI uses `mfinelli/setup-shfmt@v2` and `apt-get install jq bats`. `.gitattributes` enforces LF line endings for shell scripts (Windows checkouts).

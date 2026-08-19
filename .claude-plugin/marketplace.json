@@ -4,8 +4,8 @@
     "name": "Frédéric Guigand"
   },
   "metadata": {
-    "description": "Stop clicking Allow on every ls | grep foo. Known commands approved instantly from your allow/deny lists. Unknown commands evaluated by AI — deny list enforced, injection-resistant prompts, uncertain decisions kicked back to you. Requires: shfmt, jq (brew install shfmt jq). See github.com/froggeric/claude-smart-approval for security notices.",
-    "version": "2.0.5",
+    "description": "Unknown Bash commands evaluated by AI before Claude Code prompts you — deny list enforced, injection-resistant prompts, approved patterns auto-learned. Requires Claude Code >= 2.0.45, shfmt, jq (brew install shfmt jq). See github.com/froggeric/claude-smart-approval for security notices.",
+    "version": "2.1.0",
     "pluginRoot": "./"
   },
   "plugins": [
@@ -13,7 +13,7 @@
       "name": "smart-approval",
       "source": "./",
       "keywords": ["hooks", "bash", "permissions", "auto-approve", "smart-approval", "compound-commands"],
-      "description": "Stop clicking Allow on every ls | grep foo. Known commands approved instantly from your allow/deny lists. Unknown commands evaluated by AI with safety-first design. See github.com/froggeric/claude-smart-approval for security notices."
+      "description": "Unknown Bash commands evaluated by AI before Claude Code prompts you — deny list enforced, safety-first design, approved patterns auto-learned. See github.com/froggeric/claude-smart-approval for security notices."
     }
   ]
 }

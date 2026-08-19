@@ -1,7 +1,7 @@
 {
   "name": "smart-approval",
-  "description": "Auto-approve safe Bash commands in Claude Code using prefix matching and AI evaluation. Requires: shfmt, jq (brew install shfmt jq).",
-  "version": "2.0.5",
+  "description": "AI permission tier for Claude Code Bash commands: deny-list gate plus smart AI evaluation for unknown commands. Requires Claude Code >= 2.0.45, shfmt, jq (brew install shfmt jq).",
+  "version": "2.1.0",
   "author": {
     "name": "Frédéric Guigand"
   },

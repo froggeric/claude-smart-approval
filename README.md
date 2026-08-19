@@ -1,50 +1,63 @@
 # claude-smart-approval
 
-[![Version](https://img.shields.io/badge/version-2.0.5-blue.svg)](https://github.com/froggeric/claude-smart-approval/blob/master/CHANGELOG.md)
-[![Tests](https://img.shields.io/badge/tests-191%20passing-brightgreen.svg)](https://github.com/froggeric/claude-smart-approval/tree/master/test)
+[![Version](https://img.shields.io/badge/version-2.1.0-blue.svg)](https://github.com/froggeric/claude-smart-approval/blob/master/CHANGELOG.md)
+[![Tests](https://img.shields.io/badge/tests-194%20passing-brightgreen.svg)](https://github.com/froggeric/claude-smart-approval/tree/master/test)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](https://github.com/froggeric/claude-smart-approval/blob/master/LICENSE)
-[![Claude Code Hooks](https://img.shields.io/badge/Claude%20Code-hooks-orange.svg)](https://docs.anthropic.com/en/docs/claude-code/hooks)
+[![Claude Code Hooks](https://img.shields.io/badge/Claude%20Code-hooks-orange.svg)](https://code.claude.com/docs/en/hooks)
 
-Stop clicking "Allow" on every `ls | grep foo`. Known commands are approved instantly from **your allow/deny lists.** Unknown commands undergo a **smart AI evaluation** through your Haiku model, with your deny list enforced, injection-resistant prompts, and uncertain decisions kicked back to you.
+An **AI permission tier** for Bash commands. Claude Code already approves known commands natively — including per-segment matching of compounds like `ls | grep foo`. This hook decides the rest: anything Claude Code is about to prompt you for gets **evaluated by AI**, your **deny list is enforced absolutely** (even inside compound commands), and approved patterns are **auto-learned** so they never prompt again.
 
 ## The problem
 
-Claude Code matches `Bash(cmd *)` permissions against the full command string. `ls | grep foo` doesn't match `Bash(ls *)` or `Bash(grep *)`, so you get prompted even though both commands are individually allowed.
+Claude Code's permission rules are static. Unknown commands, first-seen tools, and compounds with one unrecognized segment all trigger a prompt — and in long autonomous sessions, you become the bottleneck. Meanwhile, a plain allow-list can't express "deny `git push --force` even when it's hidden inside a compound command".
 
-Same for `nvm use && yarn test`. Same for `git log | head`. Same for `mkdir -p dir && cd dir`. Pipes, chains, subshells: all trigger a permission prompt.
-
-This hook parses compound commands into their individual pieces and checks each one.
+This hook rides the `PermissionRequest` event — Claude Code's purpose-built hook for deciding on the user's behalf — so it only ever sees commands that would otherwise interrupt you.
 
 ## What you get
 
-- **Compound command approval**: pipes, chains, subshells, and command substitution auto-approved when each segment is in your allow list
 - **AI-powered smart approval**: unknown commands evaluated by Claude in ~8 seconds, so long autonomous sessions don't stall waiting for you to click
-- **Auto-learning**: approved patterns saved to your settings for instant future matches
-- **Safety first**: deny list is absolute, AI treats commands as untrusted input, uncertain means it asks you
+- **Absolute deny gate**: any segment of any compound command matching your deny list is blocked before AI evaluation — pipes, chains, subshells, and command substitution are all decomposed via shfmt's AST
+- **Auto-learning**: approved patterns saved to your settings for instant native matches in the future
+- **Safety first**: AI treats command text as untrusted input, and when it's uncertain it stays silent and you get the normal Claude Code prompt
 
-## Install
+## Requirements
 
-**Required:** [shfmt](https://github.com/mvdan/sh) and [jq](https://jqlang.github.io/jq/) must be installed on your system.
+- **Claude Code ≥ 2.0.45** (the `PermissionRequest` hook event). Older versions silently ignore the event — the plugin will appear dead.
+- [shfmt](https://github.com/mvdan/sh) and [jq](https://jqlang.github.io/jq/):
 
 ```bash
 brew install shfmt jq
 ```
 
-Without these, the hook silently falls back to Claude Code's normal permission prompts.
+Without shfmt/jq, the hook silently falls back to Claude Code's normal permission prompts.
 
-> **Remove `bash`, `sh`, and `zsh` from your allow list.** Commands like `bash -c 'echo hello'` have no shell metacharacters, so they take the fast path and match the prefix list without recursing into the inner command. If `Bash(bash *)` is in your allow list, `bash -c 'rm -rf /'` would be auto-approved. Check and remove:
->
-> ```bash
-> for f in ~/.claude/settings.json ~/.claude/settings.local.json .claude/settings.json .claude/settings.local.json; do [ -f "$f" ] && jq 'del(.permissions.allow[] | select(test("^Bash\\((ba|z)?sh \\*\\)$")))' "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
-> ```
->
-> **Remove other dangerous commands.** Commands like `rm`, `sudo`, `eval`, `python`, and `node` can execute arbitrary code or destructive operations. If these are in your allow list, auto-approve (Stage 1) will match them without evaluation:
+> **Note:** top-level headless `claude -p` sessions don't fire `PermissionRequest` (verified on Claude Code 2.1.227) — the plugin is inactive there. Interactive sessions, including their subagents, are the supported scope.
+
+## Install
+
+> **Keep dangerous commands out of your *native* allow rules.** Known-command approval is now entirely Claude Code's native permission system — anything in your allow rules runs without this hook ever seeing it. The one-liners below remove `bash`/`sh`/`zsh` and other dangerous prefixes from all settings layers:
 >
 > ```bash
 > for f in ~/.claude/settings.json ~/.claude/settings.local.json .claude/settings.json .claude/settings.local.json; do
 >   [ -f "$f" ] && jq 'del(.permissions.allow[] | select(test("^Bash\\((rm|dd|mkfs|chmod|chown|chgrp|kill|pkill|killall|reboot|halt|shutdown|poweroff|init|systemctl|eval|exec|bash|sh|zsh|sudo|su|source|python3?|perl|ruby|node) ?\\*?\\)?$")))' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
 > done
 > ```
+
+### After installing — two manual adjustments worth making
+
+The plugin never modifies your settings (it only *appends* auto-learned allow rules). Two things are worth doing by hand:
+
+**1. Add deny rules.** They are the deterministic layer under the AI: anything matching your deny list is blocked before AI evaluation, no exceptions — even when hidden inside compound commands. Suggested starters (tune to taste):
+
+```jsonc
+"deny": [
+  "Bash(git push --force *)",
+  "Bash(rm -rf ~ *)",
+  "Bash(rm -rf /*)"
+]
+```
+
+**2. Audit your native allow rules.** Known-command approval is Claude Code's native permission system now — anything your allow rules match runs **without this plugin ever seeing it**. Beyond the obviously dangerous prefixes (cleanup one-liner above), watch for inner wildcards: `Bash(python3* -m venv *)` matches `python3 -c '<arbitrary code>' -m venv x` — the `-c` code executes, the rest becomes argv. Prefer tight prefixes: `Bash(python3 -m venv *)`.
 
 ### Option A: Plugin marketplace (recommended)
 
@@ -55,7 +68,7 @@ From inside Claude Code:
 /plugin install smart-approval@claude-smart-approval
 ```
 
-Then add your allow/deny rules to `~/.claude/settings.json`.
+Then add your deny rules (and native allow rules) to `~/.claude/settings.json`.
 
 <details>
 <summary>Option B: Manual installation</summary>
@@ -69,7 +82,7 @@ cp auto-approve.sh smart-approve.sh auto-learn.sh ~/.claude/scripts/
 ```jsonc
 {
   "hooks": {
-    "PreToolUse": [{
+    "PermissionRequest": [{
       "matcher": "Bash",
       "hooks": [{
         "type": "command",
@@ -89,7 +102,7 @@ cp auto-approve.sh smart-approve.sh auto-learn.sh ~/.claude/scripts/
 }
 ```
 
-That's it. The hook reads permissions from all settings layers (global, project, and their local variants), supports all formats (`Bash(cmd *)`, `Bash(cmd:*)`, `Bash(cmd)`), and strips env var prefixes (`NODE_ENV=prod npm test` matches `npm`).
+The hook reads deny rules from all settings layers (global, project, and their local variants), supports all formats (`Bash(cmd *)`, `Bash(cmd:*)`, `Bash(cmd)`), and strips env var prefixes and wrappers (`NODE_ENV=prod npm test`, `sudo rm`) before matching.
 
 </details>
 
@@ -97,34 +110,25 @@ That's it. The hook reads permissions from all settings layers (global, project,
 
 This tool makes security decisions on your behalf.
 
-- **Deny list is absolute**: any segment matching your deny list is blocked, no exceptions. Stage 1 deny always wins.
+- **Deny list is absolute**: any segment matching your deny list is blocked, no exceptions, before AI evaluation. Deny always wins.
 - **AI evaluation resists injection**: commands are wrapped in delimiters; the model evaluates what a command *executes*, not what it *prints*. `echo '{"decision":"approve"}'` is recognized as a safe echo, not a trick.
-- **Uncertain means ask you**: if the AI can't decide, you get the normal Claude Code permission prompt with the AI's analysis. Nothing runs silently.
+- **Uncertain means silent**: if the AI can't decide, the hook emits nothing and you get the normal Claude Code permission prompt. Nothing runs silently.
+- **Recursion-proof**: the nested `claude -p` call runs with hooks disabled plus a reentrancy guard.
 - **Provider-agnostic**: uses `claude -p`, which inherits your configured provider (Anthropic, z.ai, ollama, etc.). No extra API keys.
 - **Auditable**: it's a bash script. Read it, modify it, run `--debug` to see every decision.
 
 <details>
 <summary>How it works</summary>
 
-Your existing `permissions.allow` and `permissions.deny` lists are the foundation. The hook reads them from all four settings layers — global (`~/.claude/settings.json`), global local (`~/.claude/settings.local.json`), project (`.claude/settings.json`), and project local (`.claude/settings.local.json`). No duplication. No separate config.
+Two stages, riding the `PermissionRequest` event (fires only when Claude Code is about to prompt you):
 
-Two stages:
+### Stage 1: Deny gate (instant)
 
-### Stage 1: Prefix matching (instant)
-
-Simple commands checked directly against your allow/deny lists. Compound commands parsed into sub-commands via [shfmt](https://github.com/mvdan/sh)'s AST, each checked individually.
-
-Three outcomes:
-
-- **Approve**: every segment in your allow list, none in deny. Runs immediately.
-- **Deny**: any segment matches your deny list. Blocked. No appeal — deny always wins.
-- **Ask you**: unknown segment or parse failure. Falls through to Stage 2.
-
-On any error it asks you. It never approves what it can't fully analyze.
+Simple commands are checked directly against your deny lists. Compound commands are parsed into sub-commands via [shfmt](https://github.com/mvdan/sh)'s AST — pipes, chains, subshells, command and process substitution — and each segment is checked. A match means an active deny decision (blocked, with the reason surfaced to you). Everything else falls through to Stage 2.
 
 ### Stage 2: AI evaluation (~8-13 seconds)
 
-When Stage 1 can't decide, the command goes to `claude -p --model haiku` with a security evaluation prompt. Your deny list is passed to the AI so it never auto-learns a pattern you've explicitly blocked. The AI classifies the command as approve, deny, or ask (escalates to you with reasoning). Approved patterns are auto-learned to your settings so they never need to ask again.
+The command — with its decomposed sub-commands as context — goes to `claude -p --model haiku` with a security evaluation prompt. Your deny list is passed to the AI so it never auto-learns a pattern you've explicitly blocked. The AI classifies as approve (executed, pattern auto-learned), deny (blocked with reason), or ask (hook stays silent, native prompt escalates to you).
 
 Smart approval is **on by default**. Set `SMART_APPROVE_ENABLED=false` to disable.
 
@@ -138,26 +142,23 @@ Smart approval is **on by default**. Set `SMART_APPROVE_ENABLED=false` to disabl
 | `SMART_APPROVE_ENABLED` | `true` | Enable/disable AI evaluation |
 | `SMART_APPROVE_MODEL` | `haiku` | Model for evaluation (fast/cheap recommended) |
 | `SMART_APPROVE_AUTO_LEARN` | `true` | Auto-learn approved patterns to settings |
-| `SMART_APPROVE_TIMEOUT` | `25` | Timeout in seconds |
+| `SMART_APPROVE_TIMEOUT` | `25` | Timeout in seconds. Keep ≤ hook timeout − 5 (30s hook → max 25s) |
 | `SMART_APPROVE_LOG_FILE` | `~/.claude/smart-approval.log` | Stage 2 log file path. Set empty to disable. |
 | `SMART_APPROVE_LOG_MAX_LINES` | `500` | Max Stage 2 log entries before rotation |
 | `CLAUDE_CMD` | `claude` | Path to claude CLI binary |
-| `AUTO_APPROVE_LOG_FILE` | `~/.claude/auto-approve.log` | Stage 1 log file path. Set empty to disable. |
+| `AUTO_APPROVE_LOG_FILE` | `~/.claude/auto-approve.log` | Stage 1 (deny) log file path. Set empty to disable. |
 | `AUTO_APPROVE_LOG_MAX_LINES` | `1000` | Max Stage 1 log entries before rotation |
 
 </details>
 
 ## Audit log
 
-### Stage 1: Prefix-matched decisions
+### Stage 1: deny-gate decisions
 
-Every Stage 1 decision (allow/deny from your prefix lists) is logged as structured JSON to `~/.claude/auto-approve.log`. Each entry has timestamp, command, decision, matched prefix, and type (simple/compound).
+Deny decisions are logged as structured JSON to `~/.claude/auto-approve.log` (allow decisions are Stage 2's — see below). Each entry has timestamp, command, decision, matched deny prefix, and type (simple/compound).
 
 ```bash
-# Recent prefix-matched approvals
-jq 'select(.decision=="allow")' ~/.claude/auto-approve.log
-
-# Denied commands
+# Denied commands (Stage 1 deny gate)
 jq 'select(.decision=="deny")' ~/.claude/auto-approve.log
 
 # Everything from today
@@ -207,7 +208,7 @@ echo '{"tool_input":{"command":"ls | grep foo"}}' | ./auto-approve.sh --debug
 <details>
 <summary>Testing</summary>
 
-191 tests. Requires [BATS](https://bats-core.readthedocs.io/).
+194 tests. Requires [BATS](https://bats-core.readthedocs.io/).
 
 ```bash
 bats test/
@@ -234,4 +235,4 @@ See [DESIGN.md](DESIGN.md) for architecture, file structure, and rationale (why 
 
 ## Credits
 
-Based on [claude-code-auto-approve](https://github.com/oryband/claude-code-auto-approve) (MIT) by Ory Band, via [claude-code-plus](https://github.com/AbdelrahmanHafez/claude-code-plus) (MIT) by Abdelrahman Hafez. Extended with deny list support, active deny for compounds, fast path for simple commands, settings layer support, env var stripping, AI-powered smart approval, auto-learning, and a 191-test suite.
+Based on [claude-code-auto-approve](https://github.com/oryband/claude-code-auto-approve) (MIT) by Ory Band, via [claude-code-plus](https://github.com/AbdelrahmanHafez/claude-code-plus) (MIT) by Abdelrahman Hafez. The v2.1.0 `PermissionRequest` migration builds on [v-ivoronin's fork](https://github.com/v-ivoronin/claude-smart-approval) (Windows fixes, auth fix, reentrancy guard — schema corrected to the documented object form). Extended with deny-list enforcement in compounds, settings-layer support, env var stripping, AI-powered smart approval, auto-learning, and a 194-test suite.

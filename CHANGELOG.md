@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-08-19
+
+### Changed
+
+- **Migrated to the `PermissionRequest` hook event.** Claude Code ≥ 2.0.45 exposes PermissionRequest, which fires only when a permission prompt would be shown — the purpose-built event for deciding on the user's behalf. Successive Claude Code releases (2.1.77 deny-rule override, 2.1.98 compound forced prompts, 2.1.211 ask flooring, 2.1.222 background-agent restrictions) progressively clamped what a PreToolUse `allow` can bypass, which surfaced as repeated "approve this hook" confirmation prompts. **Requires Claude Code ≥ 2.0.45** — older versions silently ignore the event.
+- **Stage 1 is now a deny gate.** Allow-list matching was removed: Claude Code handles known-command approval natively, including per-segment matching of compound commands. The hook actively denies anything matching your deny list — as a stdout decision object with exit 0 (PermissionRequest ignores exit codes; stderr and exit 2 are discarded) — and everything else goes to Stage 2 AI evaluation.
+- **"Ask" is now silence.** Instead of emitting `permissionDecision:"ask"`, the hook emits no decision and the native permission prompt escalates to the user.
+- **Stage 1 logging is deny-only.** `~/.claude/auto-approve.log` records deny decisions; allow decisions are Stage 2's and go to `~/.claude/smart-approval.log`.
+- **AI prompt budget raised 500 → 4000 chars** (command and sub-commands). Long heredoc scripts were previously truncated mid-command, causing the AI to defer on benign work.
+
+### Added
+
+- **Reentrancy guard.** `SMART_APPROVE_ACTIVE` prevents hook recursion if the nested `claude -p` session ever loads hooks.
+- **Windows hardening.** CRLF stripping at all jq/read boundaries (native Windows jq emits CRLF) and `.gitattributes` LF enforcement for shell scripts.
+
+### Fixed
+
+- **Stage 2 auth failure on OAuth/keychain setups.** `claude --bare` never reads OAuth or keychain credentials. Replaced with `--settings '{"disableAllHooks":true}'` in smart-approve.sh and eval-prompt.sh — restores credential loading while still disabling hooks in the nested session.
+- **jq parse-error noise on malformed hook input** is now silenced (stderr stays clean).
+
+### Known limitations
+
+- **Top-level headless `claude -p` sessions do not fire PermissionRequest** (verified on 2.1.227): the plugin is inactive there and would-prompt commands follow Claude Code's default auto-deny. Interactive sessions — including their subagents — are the supported scope.
+
+### Credits
+
+- **[v-ivoronin](https://github.com/v-ivoronin)** — the PermissionRequest migration direction, Windows CRLF fixes, the `--settings` auth fix, and the reentrancy-guard concept, ported from their fork with the decision schema corrected to the documented object form.
+
+### Tests
+
+- Suite reworked for the new contract: **194 tests** (from 191). Allow-matching tests were replaced with deny-side equivalents; new `permission-request.bats` covers the decision schema, ask-by-silence, the reentrancy guard, CRLF tolerance, and `--deny` hermeticity.
+
 ## [2.0.5] - 2026-04-19
 
 ### Fixed
