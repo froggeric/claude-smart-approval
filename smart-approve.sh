@@ -10,6 +10,12 @@
 
 set -uo pipefail
 
+# Reentrancy guard producer: exported into the `claude -p` child's environment
+# so that if the nested session ever loads hooks, auto-approve.sh exits early
+# instead of recursing. (--settings '{"disableAllHooks":true}' below is the
+# primary guard; this sentinel survives config drift.)
+export SMART_APPROVE_ACTIVE=true
+
 # --- Configuration (overridable via environment) ---
 SMART_APPROVE_MODEL="${SMART_APPROVE_MODEL:-haiku}"
 SMART_APPROVE_ENABLED="${SMART_APPROVE_ENABLED:-true}"
@@ -26,23 +32,18 @@ smart_debug() {
 }
 
 # --- Output helpers (same JSON format as auto-approve.sh) ---
+# PermissionRequest uses a decision object with a behavior field; PreToolUse's
+# permissionDecision is gone. "Ask" is expressed by emitting NO output at all —
+# the native permission prompt then escalates to the user.
 smart_approve() {
-  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}'
+  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}'
 }
 
 smart_deny() {
   local reason="$1"
   jq -cn --arg msg "$reason" '{
-    hookSpecificOutput: {hookEventName:"PreToolUse", permissionDecision:"deny"},
+    hookSpecificOutput: {hookEventName:"PermissionRequest", decision:{behavior:"deny", message:$msg}},
     systemMessage: $msg
-  }'
-}
-
-smart_ask() {
-  local reason="$1"
-  jq -cn --arg msg "$reason" '{
-    hookSpecificOutput: {hookEventName:"PreToolUse", permissionDecision:"ask"},
-    permissionDecisionReason: $msg
   }'
 }
 
@@ -77,7 +78,7 @@ log_decision() {
 # Strips lines that look like instruction injection, truncates length.
 sanitize_for_prompt() {
   local input="$1"
-  local max_len="${2:-500}"
+  local max_len="${2:-4000}"
 
   # Truncate to max length
   if [[ ${#input} -gt "$max_len" ]]; then
@@ -110,9 +111,9 @@ build_prompt() {
 
   # Sanitize all untrusted inputs before embedding in prompt
   local safe_command safe_cwd safe_subs
-  safe_command=$(sanitize_for_prompt "$command" 500)
+  safe_command=$(sanitize_for_prompt "$command" 4000)
   safe_cwd=$(sanitize_for_prompt "$cwd" 200)
-  safe_subs=$(sanitize_for_prompt "$sub_commands" 1000)
+  safe_subs=$(sanitize_for_prompt "$sub_commands" 4000)
 
   local deny_section=""
   if [[ -n "$deny_list" ]]; then
@@ -182,6 +183,7 @@ parse_response() {
   # Extract .result from claude -p JSON output
   local result
   result=$(jq -r '.result // empty' <<< "$response" 2>/dev/null) || true
+  result="${result//$'\r'/}"   # strip CRs from native Windows output (multi-line)
   [[ -z "$result" ]] && return 1
 
   # Extract JSON from potential markdown code block wrapping.
@@ -193,13 +195,14 @@ parse_response() {
     : # result itself is valid JSON — fast path
   else
     # Extract content from between markdown code fences, if present
+    # (single quotes required: the ``` fence is literal, not an expansion)
     local stripped
+    # shellcheck disable=SC2016
     stripped=$(sed -n '/^```/,/^```/{ /^```/d; p; }' <<< "$result" 2>/dev/null) || true
     if [[ -n "$stripped" ]] && decision_json=$(jq -c '.' <<< "$stripped" 2>/dev/null); then
       : # found JSON after stripping code fences
     else
-      # No valid JSON found — default to ask
-      smart_ask "Unable to parse AI response"
+      # No valid JSON found — no decision; the native prompt escalates
       return 0
     fi
   fi
@@ -225,8 +228,9 @@ parse_response() {
       smart_deny "$reason"
       ;;
     *)
+      # Ask (or anything unrecognized): log the reason, emit nothing.
+      # No output = no decision = the native prompt escalates to the user.
       log_decision "$command" "$decision" "$reason"
-      smart_ask "$reason"
       ;;
   esac
 }
@@ -258,7 +262,7 @@ evaluate_command() {
       --output-format json \
       --dangerously-skip-permissions \
       --max-turns 1 \
-      --bare 2>/dev/null) || true
+      --settings '{"disableAllHooks":true}' 2>/dev/null) || true
   else
     # No timeout available — rely on hook's own timeout
     response=$(printf '%s' "$prompt" | "$CLAUDE_CMD" -p \
@@ -266,7 +270,7 @@ evaluate_command() {
       --output-format json \
       --dangerously-skip-permissions \
       --max-turns 1 \
-      --bare 2>/dev/null) || true
+      --settings '{"disableAllHooks":true}' 2>/dev/null) || true
   fi
 
   [[ -z "$response" ]] && return 1
@@ -305,6 +309,7 @@ main() {
   local stdin_content=""
   if [[ ! -t 0 ]]; then
     stdin_content=$(cat)
+    stdin_content="${stdin_content//$'\r'/}"   # strip CRs from native Windows pipelines
   fi
   local deny_list=""
   if [[ "$stdin_content" == *"---DENY_LIST---"* ]]; then

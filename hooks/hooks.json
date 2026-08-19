@@ -1,7 +1,7 @@
 {
-  "description": "Auto-approve safe Bash commands using prefix matching and AI evaluation",
+  "description": "AI permission tier for Bash commands: deny-list gate plus smart evaluation",
   "hooks": {
-    "PreToolUse": [
+    "PermissionRequest": [
       {
         "matcher": "Bash",
         "hooks": [

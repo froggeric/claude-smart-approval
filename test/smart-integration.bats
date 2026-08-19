@@ -6,45 +6,49 @@ load test_helper
 @test "int: simple unknown command triggers smart approval (approve)" {
   local mock_resp
   mock_resp='{"type":"result","result":"{\"decision\":\"approve\",\"reason\":\"safe\",\"pattern\":\"Bash(curl *)\",\"scope\":\"global\"}","cost_usd":0.001}'
-  run_hook_smart "curl https://example.com" '["Bash(ls *)"]' '[]' "$mock_resp"
-  [[ "$output" == *'"permissionDecision":"allow"'* ]]
+  run_hook_smart "curl https://example.com" '[]' "$mock_resp"
+  [[ "$output" == *'"behavior":"allow"'* ]]
 }
 
 @test "int: simple unknown command triggers smart approval (deny)" {
   local mock_resp
   mock_resp='{"type":"result","result":"{\"decision\":\"deny\",\"reason\":\"dangerous\"}","cost_usd":0.001}'
-  run_hook_smart "rm -rf /tmp/test" '["Bash(ls *)"]' '[]' "$mock_resp"
-  [[ "$output" == *'"permissionDecision":"deny"'* ]]
+  run_hook_smart "rm -rf /tmp/test" '[]' "$mock_resp"
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *'"behavior":"deny"'* ]]
 }
 
-@test "int: compound unknown command triggers smart approval (ask)" {
+@test "int: unknown compound ask emits nothing (native prompt)" {
   local mock_resp
   mock_resp='{"type":"result","result":"{\"decision\":\"ask\",\"reason\":\"uncertain\"}","cost_usd":0.001}'
-  run_hook_smart "ls; unknown_cmd" '["Bash(ls *)"]' '[]' "$mock_resp"
-  [[ "$output" == *'"permissionDecision":"ask"'* ]]
+  run_hook_smart "ls; unknown_cmd" '[]' "$mock_resp"
+  [[ "$status" -eq 0 ]]
+  [[ -z "$output" ]]
 }
 
-@test "int: allowed compound skips smart approval" {
-  # ls and grep are both allowed — should approve without calling claude
-  run_hook "ls | grep foo" '["Bash(ls *)","Bash(grep *)"]'
-  assert_approved
+@test "int: non-denied compound reaches Stage 2" {
+  # No allow fast path anymore: every non-denied command goes to the AI tier
+  local mock_resp
+  mock_resp='{"type":"result","result":"{\"decision\":\"approve\",\"reason\":\"safe\",\"pattern\":\"Bash(ls *)\",\"scope\":\"global\"}","cost_usd":0.001}'
+  run_hook_smart "ls | grep foo" '[]' "$mock_resp"
+  [[ "$output" == *'"behavior":"allow"'* ]]
 }
 
 @test "int: denied compound skips smart approval" {
-  # Contains denied segment — should deny without calling claude
-  run_hook "ls && rm -rf /" '["Bash(ls *)","Bash(rm *)"]' '["Bash(rm -rf *)"]'
+  # Contains denied segment — denied without calling claude
+  run_hook "ls && rm -rf /" '["Bash(rm -rf *)"]'
   assert_denied
 }
 
 @test "int: SMART_APPROVE_ENABLED=false skips Stage 2" {
   # run_hook disables smart approval by default, so unknown cmd falls through
-  run_hook "unknown_cmd" '["Bash(ls *)"]'
+  run_hook "unknown_cmd" '[]'
   assert_fallthrough
 }
 
 @test "int: smart approval failure falls through gracefully" {
   # Mock returns empty output — should fall through to native prompt
-  run_hook_smart "unknown_cmd" '["Bash(ls *)"]' '[]' ""
+  run_hook_smart "unknown_cmd" '[]' ""
   assert_fallthrough
 }
 
@@ -64,10 +68,12 @@ load test_helper
   echo '{"permissions":{"allow":[]}}' > "$home_dir/.claude/settings.local.json"
 
   SMART_APPROVE_ENABLED=true SMART_APPROVE_AUTO_LEARN=true \
+  SMART_APPROVE_ACTIVE= \
   CLAUDE_CMD="$mock_cmd" MOCK_RESPONSE="$mock_resp" \
   HOME="$home_dir" \
-  run bash -c 'printf "%s" "$1" | "$2" --permissions "$3"' \
-    _ "$json" "$HOOK_SCRIPT" '["Bash(ls *)"]'
+  AUTO_APPROVE_LOG_FILE="" \
+    run bash -c 'printf "%s" "$1" | "$2" --deny "[]"' \
+      _ "$json" "$HOOK_SCRIPT"
 
   local patterns
   patterns=$(jq -r '.permissions.allow[]' "$home_dir/.claude/settings.local.json")
@@ -93,10 +99,12 @@ load test_helper
   echo '{"permissions":{"allow":[]}}' > "$home_dir/.claude/settings.local.json"
 
   SMART_APPROVE_ENABLED=true SMART_APPROVE_AUTO_LEARN=true \
+  SMART_APPROVE_ACTIVE= \
   CLAUDE_CMD="$mock_cmd" MOCK_RESPONSE="$mock_resp" \
   HOME="$home_dir" \
-  run bash -c 'printf "%s" "$1" | "$2" --permissions "$3"' \
-    _ "$json" "$HOOK_SCRIPT" '["Bash(ls *)"]'
+  AUTO_APPROVE_LOG_FILE="" \
+    run bash -c 'printf "%s" "$1" | "$2" --deny "[]"' \
+      _ "$json" "$HOOK_SCRIPT"
 
   local count
   count=$(jq '.permissions.allow | length' "$home_dir/.claude/settings.local.json")
@@ -122,10 +130,12 @@ load test_helper
   echo '{"permissions":{"allow":[]}}' > "$home_dir/.claude/settings.local.json"
 
   SMART_APPROVE_ENABLED=true SMART_APPROVE_AUTO_LEARN=true \
+  SMART_APPROVE_ACTIVE= \
   CLAUDE_CMD="$mock_cmd" MOCK_RESPONSE="$mock_resp" \
   HOME="$home_dir" \
-  run bash -c 'printf "%s" "$1" | "$2" --permissions "$3"' \
-    _ "$json" "$HOOK_SCRIPT" '["Bash(ls *)"]'
+  AUTO_APPROVE_LOG_FILE="" \
+    run bash -c 'printf "%s" "$1" | "$2" --deny "[]"' \
+      _ "$json" "$HOOK_SCRIPT"
 
   local count
   count=$(jq '.permissions.allow | length' "$home_dir/.claude/settings.local.json")
@@ -141,6 +151,8 @@ load test_helper
   # rm is on deny list but AI mock says approve — must still be denied
   local mock_resp
   mock_resp='{"type":"result","result":"{\"decision\":\"approve\",\"reason\":\"seems safe\",\"pattern\":\"Bash(rm *)\",\"scope\":\"project\"}","cost_usd":0.001}'
-  run_hook_smart "rm -rf /tmp/test" '["Bash(ls *)"]' '["Bash(rm *)"]' "$mock_resp"
-  [[ "$status" -eq 2 ]]
+  run_hook_smart "rm -rf /tmp/test" '["Bash(rm *)"]' "$mock_resp"
+  # Deny list wins (C2): deny decision object on stdout, exit 0
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *'"behavior":"deny"'* ]]
 }

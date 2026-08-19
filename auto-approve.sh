@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
-# auto-approve — PreToolUse hook for Claude Code
+# auto-approve — PermissionRequest hook for Claude Code
 #
-# Auto-approves compound Bash commands (pipes, chains, subshells, etc.)
-# when every sub-command matches your allow list and none match your deny
-# list. Actively denies compounds containing denied segments. Falls
-# through on unknown commands for Claude Code's native prompt.
+# AI permission tier for Bash commands Claude Code is about to prompt for.
+# Parses compound commands (pipes, chains, subshells) into sub-commands,
+# actively denies anything matching your deny list, and evaluates the rest
+# via smart-approve.sh (claude -p). Emits a PermissionRequest decision
+# object on allow/deny; emits nothing to fall through to the native prompt.
 #
 # See README.md for full documentation.
 #
@@ -13,22 +14,32 @@
 
 set -uo pipefail
 
-DEBUG=false
-readonly ALLOW_JSON='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}'
+# Reentrancy guard. The AI tier shells out to `claude -p`, a nested Claude Code
+# session. If that session ever loads hooks, this script re-enters and recurses.
+# smart-approve.sh exports SMART_APPROVE_ACTIVE into the child's environment
+# (the `--settings '{"disableAllHooks":true}'` flag is the primary guard).
+# Exit 0 with no output means "no decision" — normal flow applies.
+if [[ -n "${SMART_APPROVE_ACTIVE:-}" ]]; then exit 0; fi
+export SMART_APPROVE_ACTIVE=1
 
-# Stage 1 decision logging
+DEBUG=false
+
+deny() {
+  jq -cn --arg msg "$1" '{
+    hookSpecificOutput: {hookEventName:"PermissionRequest", decision:{behavior:"deny", message:$msg}},
+    systemMessage: $msg
+  }'
+  # PermissionRequest ignores exit codes — the decision object on stdout is
+  # the only way to deny, and the script must exit 0 for that JSON to be honored.
+  exit 0
+}
+
+# Stage 1 decision logging (deny decisions only — allows come from Stage 2
+# and are logged by smart-approve.sh)
 AUTO_APPROVE_LOG_FILE="${AUTO_APPROVE_LOG_FILE:-$HOME/.claude/auto-approve.log}"
 AUTO_APPROVE_LOG_MAX_LINES="${AUTO_APPROVE_LOG_MAX_LINES:-1000}"
 
 debug() { if $DEBUG; then printf '[approve-compound] %s\n' "$*" >&2; fi; }
-approve() { printf '%s\n' "$ALLOW_JSON"; exit 0; }
-deny() {
-  jq -n --arg msg "$1" '{
-    hookSpecificOutput: {hookEventName:"PreToolUse", permissionDecision:"deny"},
-    systemMessage: $msg
-  }' >&2
-  exit 2
-}
 
 # shellcheck disable=SC2034
 _MATCHED_PREFIX=""
@@ -59,7 +70,7 @@ log_stage1_decision() {
 }
 
 # ---------------------------------------------------------------------------
-# Permission loading (single pass over all settings files)
+# Deny-list loading (single pass over all settings files)
 # ---------------------------------------------------------------------------
 
 find_git_root() {
@@ -74,7 +85,9 @@ find_git_root() {
   fi
 }
 
-# Populates the caller's allowed_prefixes and denied_prefixes arrays.
+# Populates the caller's denied_prefixes array from the deny lists of all
+# settings layers. Allow lists are intentionally not read: natively allowed
+# commands never prompt, so the hook never sees them.
 load_prefixes() {
   local git_root
   git_root=$(find_git_root 2>/dev/null || true)
@@ -91,18 +104,19 @@ load_prefixes() {
 
   local line
   while IFS= read -r line; do
+    # Native Windows jq (WinGet/choco) writes CRLF; `read -r` keeps the \r, which
+    # would make every prefix unmatchable. Harmless no-op where jq emits LF.
+    line="${line%$'\r'}"
     case "$line" in
-      allow:*) allowed_prefixes+=("${line#allow:}") ;;
-      deny:*)  denied_prefixes+=("${line#deny:}") ;;
+      deny:*) denied_prefixes+=("${line#deny:}") ;;
     esac
   done < <(
     for file in "${files[@]}"; do
       [[ -f "$file" ]] || continue
-      debug "Reading prefixes from: $file"
+      debug "Reading deny prefixes from: $file"
       jq -r '
         def extract_prefix: sub("^Bash\\("; "") | sub("( \\*|\\*|:\\*)\\)$"; "") | sub("\\)$"; "");
-        (.permissions.allow[]? // empty | select(startswith("Bash(")) | "allow:" + extract_prefix),
-        (.permissions.deny[]?  // empty | select(startswith("Bash(")) | "deny:"  + extract_prefix)
+        (.permissions.deny[]? // empty | select(startswith("Bash(")) | "deny:" + extract_prefix)
       ' "$file" 2>/dev/null || true
     done | sort -u
   )
@@ -223,13 +237,14 @@ parse_compound() {
   raw_commands=$(jq -r "$SHFMT_AST_FILTER" <<< "$ast" 2>/dev/null) || return 1
 
   while IFS= read -r line; do
+    line="${line%$'\r'}"   # strip CR from native Windows jq output
     [[ -z "$line" ]] && continue
     # Recursively expand bash -c / sh -c
     if [[ "$line" =~ ^(env[[:space:]]+)?(/[^[:space:]]*/)?((ba)?sh)[[:space:]]+-c[[:space:]]*[\'\"](.*)[\'\"]$ ]]; then
       debug "Recursing into shell -c: ${BASH_REMATCH[5]}"
       if ! parse_compound "${BASH_REMATCH[5]}"; then
         # Inner parse failed — emit wrapper as-is so it gets checked
-        # against allow/deny lists (and likely falls through)
+        # against the deny list (and likely falls through)
         printf '%s\0' "$line"
       fi
     else
@@ -239,7 +254,7 @@ parse_compound() {
 }
 
 # ---------------------------------------------------------------------------
-# Permission matching
+# Deny-list matching
 # ---------------------------------------------------------------------------
 
 # Strip leading env var assignments (VAR=val cmd ...).
@@ -298,29 +313,6 @@ matches_prefix_list() {
   return 1
 }
 
-# Check a single command against deny then allow lists.
-# Returns: 0=allowed, 1=not allowed (denied or unknown)
-is_allowed() {
-  local cmd="$1"
-  if matches_prefix_list "$cmd" "deny" ${denied_prefixes[@]+"${denied_prefixes[@]}"}; then
-    return 1
-  fi
-  matches_prefix_list "$cmd" "allow" "${allowed_prefixes[@]}"
-}
-
-# Check all commands (passed as args). Returns 0 only if every one is allowed.
-all_allowed() {
-  local cmd
-  for cmd in "$@"; do
-    [[ -z "$cmd" ]] && continue
-    if ! is_allowed "$cmd"; then
-      debug "Not all commands approved"
-      return 1
-    fi
-  done
-  return 0
-}
-
 # Check if any command (passed as args) matches the deny list.
 any_denied() {
   [[ ${#denied_prefixes[@]} -eq 0 ]] && return 1
@@ -340,10 +332,10 @@ any_denied() {
 # Stage 2: Smart approval via AI evaluation (smart-approve.sh + auto-learn.sh)
 # ---------------------------------------------------------------------------
 
-# Evaluate an unknown command via AI. On success, outputs hook JSON and exits.
+# Evaluate a command via AI. On success, outputs hook JSON and exits.
 # On failure (or disabled), returns 1 so the caller can fall through.
-# NOTE: This function exits the script on allow/deny/ask decisions — same
-# pattern as approve() and deny() above.
+# NOTE: This function exits the script on allow/deny decisions — same
+# pattern as deny() above.
 run_smart_approve() {
   local command="$1"
   local cwd="$2"
@@ -374,12 +366,12 @@ run_smart_approve() {
   # Parse output once into an array (avoid 4 separate pipelines)
   local -a output_lines=()
   while IFS= read -r line; do
-    output_lines+=("$line")
+    output_lines+=("${line%$'\r'}")   # strip CR from native Windows jq output
   done <<< "$smart_output"
 
   local first_line="${output_lines[0]}"
 
-  if [[ "$first_line" == *'"permissionDecision":"allow"'* ]]; then
+  if [[ "$first_line" == *'"behavior":"allow"'* ]]; then
     printf '%s\n' "$first_line"
 
     # Auto-learn the pattern (if enabled)
@@ -401,14 +393,14 @@ run_smart_approve() {
       fi
     fi
     exit 0
-  elif [[ "$first_line" == *'"permissionDecision":"deny"'* ]]; then
-    printf '%s\n' "$first_line" >&2
-    exit 2
-  elif [[ "$first_line" == *'"permissionDecision":"ask"'* ]]; then
+  elif [[ "$first_line" == *'"behavior":"deny"'* ]]; then
+    # STDOUT + exit 0 — PermissionRequest only honors the stdout decision
+    # object; stderr output would be silently discarded.
     printf '%s\n' "$first_line"
     exit 0
   fi
 
+  # Ask or unparseable: no decision — fall through to the native prompt.
   return 1
 }
 
@@ -417,12 +409,11 @@ run_smart_approve() {
 # ---------------------------------------------------------------------------
 
 main() {
-  local permissions_json="" deny_json="" mode="hook" cwd=""
+  local deny_json="" mode="hook" cwd=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --debug) DEBUG=true; shift ;;
-      --permissions) permissions_json="$2"; shift 2 ;;
       --deny) deny_json="$2"; shift 2 ;;
       parse) mode="parse"; shift ;;
       *) shift ;;
@@ -457,49 +448,40 @@ main() {
   # Guard: read hook input
   local input command
   input=$(cat)
-  command=$(jq -r '.tool_input.command // empty' <<< "$input")
+  command=$(jq -r '.tool_input.command // empty' <<< "$input" 2>/dev/null)
   [[ -z "$command" ]] && exit 0
+  command="${command%$'\r'}"   # strip CR from native Windows jq output
 
   debug "Command: $command"
 
-  # Load permissions (from settings files, or from --permissions/--deny for testing)
-  local -a allowed_prefixes=() denied_prefixes=()
-  if [[ -n "$permissions_json" ]]; then
+  # Load deny list (from settings, or from --deny for testing; the flag's
+  # presence — even with an empty array — suppresses settings-file loading)
+  local -a denied_prefixes=()
+  if [[ -n "$deny_json" ]]; then
     local line
     while IFS= read -r line; do
-      [[ -n "$line" ]] && allowed_prefixes+=("$line")
-    done < <(jq -r '.[] | sub("^Bash\\("; "") | sub("( \\*|\\*|:\\*)\\)$"; "") | sub("\\)$"; "")' <<< "$permissions_json" 2>/dev/null)
-    if [[ -n "$deny_json" ]]; then
-      while IFS= read -r line; do
-        [[ -n "$line" ]] && denied_prefixes+=("$line")
-      done < <(jq -r '.[] | sub("^Bash\\("; "") | sub("( \\*|\\*|:\\*)\\)$"; "") | sub("\\)$"; "")' <<< "$deny_json" 2>/dev/null)
-    fi
+      line="${line%$'\r'}"   # strip CR from native Windows jq output
+      [[ -n "$line" ]] && denied_prefixes+=("$line")
+    done < <(jq -r '.[] | sub("^Bash\\("; "") | sub("( \\*|\\*|:\\*)\\)$"; "") | sub("\\)$"; "")' <<< "$deny_json" 2>/dev/null)
   else
     load_prefixes
   fi
-  debug "Loaded ${#allowed_prefixes[@]} allow, ${#denied_prefixes[@]} deny prefixes"
-  [[ ${#allowed_prefixes[@]} -eq 0 ]] && exit 0
+  debug "Loaded ${#denied_prefixes[@]} deny prefixes"
 
-  # Simple command — check directly without shfmt parsing
+  # Simple command — deny-gate, then Stage 2
   if ! needs_compound_parse "$command"; then
     debug "Simple command"
-    if is_allowed "$command"; then
-      log_stage1_decision "$command" "allow" "$_MATCHED_PREFIX" "simple"
-      approve
-    fi
-    # Guard: deny list must be checked before AI approval (C2)
     if any_denied "$command"; then
       log_stage1_decision "$command" "deny" "$_MATCHED_PREFIX" "simple"
       deny "Command matches deny list"
     fi
     # Stage 2: Smart approval for unknown simple commands
-    cwd=$(jq -r '.cwd // empty' <<< "$input")
-    local -a simple_cmds=("$command")
+    cwd=$(jq -r '.cwd // empty' <<< "$input" 2>/dev/null)
     run_smart_approve "$command" "$cwd" "$command"
     exit 0
   fi
 
-  # Compound command — parse into segments and check each
+  # Compound command — parse into segments, deny-gate, then Stage 2
   debug "Compound command"
   local -a extracted_commands=()
   while IFS= read -r -d '' c; do extracted_commands+=("$c"); done < <(parse_compound "$command")
@@ -508,12 +490,6 @@ main() {
   # unparseable commands that may contain dangerous sub-commands)
   [[ ${#extracted_commands[@]} -eq 0 || -z "${extracted_commands[0]}" ]] && exit 0
 
-  if all_allowed "${extracted_commands[@]}"; then
-    log_stage1_decision "$command" "allow" "$_MATCHED_PREFIX" "compound"
-    approve
-  fi
-
-  # Not all approved: actively deny if any segment is in the deny list.
   if any_denied "${extracted_commands[@]}"; then
     log_stage1_decision "$command" "deny" "$_MATCHED_PREFIX" "compound"
     deny "Compound command contains a denied sub-command"

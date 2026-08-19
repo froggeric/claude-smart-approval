@@ -170,14 +170,14 @@ for ((i=0; i<total_cases; i++)); do
         --output-format json \
         --dangerously-skip-permissions \
         --max-turns 1 \
-        --bare 2>/dev/null) || true
+        --settings '{"disableAllHooks":true}' 2>/dev/null) || true
     else
       local_response=$(printf '%s' "$prompt" | claude -p \
         --model "$MODEL" \
         --output-format json \
         --dangerously-skip-permissions \
         --max-turns 1 \
-        --bare 2>/dev/null) || true
+        --settings '{"disableAllHooks":true}' 2>/dev/null) || true
     fi
 
     parsed=$(parse_eval_response "$local_response")

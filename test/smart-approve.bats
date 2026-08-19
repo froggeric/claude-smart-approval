@@ -36,7 +36,7 @@ teardown() {
 JSONEOF
 )
   run bash -c 'printf "%s" "$1" | "$2" test-parse' _ "$claude_output" "$SMART_SCRIPT"
-  [[ "$output" == *'"permissionDecision":"allow"'* ]]
+  [[ "$output" == *'"behavior":"allow"'* ]]
 }
 
 @test "smart: parse deny response" {
@@ -46,19 +46,20 @@ JSONEOF
 JSONEOF
 )
   run bash -c 'printf "%s" "$1" | "$2" test-parse' _ "$claude_output" "$SMART_SCRIPT"
-  [[ "$output" == *'"permissionDecision":"deny"'* ]]
+  [[ "$output" == *'"behavior":"deny"'* ]]
   [[ "$output" == *"destructive operation"* ]]
 }
 
-@test "smart: parse ask response" {
+@test "smart: parse ask response emits nothing" {
   local claude_output
   claude_output=$(cat <<'JSONEOF'
 {"type":"result","result":"{\"decision\":\"ask\",\"reason\":\"uncertain about network access\"}","cost_usd":0.001}
 JSONEOF
 )
   run bash -c 'printf "%s" "$1" | "$2" test-parse' _ "$claude_output" "$SMART_SCRIPT"
-  [[ "$output" == *'"permissionDecision":"ask"'* ]]
-  [[ "$output" == *"uncertain about network access"* ]]
+  # Ask = no decision = no output; the native prompt escalates to the user
+  [[ "$status" -eq 0 ]]
+  [[ -z "$output" ]]
 }
 
 @test "smart: parse response with markdown code block wrapping" {
@@ -68,17 +69,19 @@ JSONEOF
 JSONEOF
 )
   run bash -c 'printf "%s" "$1" | "$2" test-parse' _ "$claude_output" "$SMART_SCRIPT"
-  [[ "$output" == *'"permissionDecision":"allow"'* ]]
+  [[ "$output" == *'"behavior":"allow"'* ]]
 }
 
-@test "smart: parse malformed response defaults to ask" {
+@test "smart: parse malformed response emits nothing" {
   local claude_output
   claude_output=$(cat <<'JSONEOF'
 {"type":"result","result":"I cannot evaluate this command","cost_usd":0.001}
 JSONEOF
 )
   run bash -c 'printf "%s" "$1" | "$2" test-parse' _ "$claude_output" "$SMART_SCRIPT"
-  [[ "$output" == *'"permissionDecision":"ask"'* ]]
+  # Unparseable = no decision = no output; the native prompt escalates
+  [[ "$status" -eq 0 ]]
+  [[ -z "$output" ]]
 }
 
 @test "smart: parse empty response falls through" {
@@ -107,7 +110,7 @@ JSONEOF
 
   MOCK_RESPONSE="$mock_resp" run bash -c 'printf "git status" | "$1" --command "git status" --cwd "/tmp" --claude-cmd "$2"' \
     _ "$SMART_SCRIPT" "$mock_cmd"
-  [[ "$output" == *'"permissionDecision":"allow"'* ]]
+  [[ "$output" == *'"behavior":"allow"'* ]]
 }
 
 @test "smart: mocked deny produces deny JSON" {
@@ -117,7 +120,7 @@ JSONEOF
 
   MOCK_RESPONSE="$mock_resp" run bash -c 'printf "rm -rf /" | "$1" --command "rm -rf /" --cwd "/tmp" --claude-cmd "$2"' \
     _ "$SMART_SCRIPT" "$mock_cmd"
-  [[ "$output" == *'"permissionDecision":"deny"'* ]]
+  [[ "$output" == *'"behavior":"deny"'* ]]
 }
 
 @test "smart: SMART_APPROVE_ENABLED=false falls through" {
@@ -150,23 +153,23 @@ JSONEOF
 
 @test "smart: sanitize truncates long commands" {
   local long_cmd
-  long_cmd=$(printf 'ls %.0s' {1..200})
+  long_cmd=$(printf 'ls %.0s' {1..3000})
   run bash -c '"$1" test-prompt --command "$2" --cwd "/tmp"' _ "$SMART_SCRIPT" "$long_cmd"
   [[ "$output" == *"[truncated]"* ]]
 }
 
 @test "smart: sanitize truncation preserves most content" {
   local long_cmd
-  long_cmd=$(printf '%0.sa' {1..600})" word"
+  long_cmd=$(printf '%0.sa' {1..5000})" word"
   run bash -c '"$1" test-prompt --command "$2" --cwd "/tmp"' _ "$SMART_SCRIPT" "$long_cmd"
   [[ "$output" == *"[truncated]"* ]]
   local cmd_line
   cmd_line=$(printf '%s' "$output" | sed -n '/^=== BEGIN COMMAND ===$/,/^=== END COMMAND ===$/{ /^===/d; p; }')
-  # After fix: should keep ~486 chars of content (max_len - 14 for suffix)
+  # Should keep ~3986 chars of content (max_len - 14 for suffix)
   local content_before
   content_before="${cmd_line%%...[truncated]*}"
-  # Must preserve at least 486 chars (500 - 14 reserved for "...[truncated]")
-  [[ ${#content_before} -ge 486 ]]
+  # Must preserve at least 3986 chars (4000 - 14 reserved for "...[truncated]")
+  [[ ${#content_before} -ge 3986 ]]
 }
 
 @test "smart: sanitize strips uppercase APPROVE keyword" {
