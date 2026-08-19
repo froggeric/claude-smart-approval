@@ -1,0 +1,6 @@
+# Keep shell scripts LF-only: a Windows checkout with autocrlf would corrupt
+# them (Git Bash executes CRLF scripts only via bash's lenient mode, and the
+# shebang line breaks under some invocations). CRLF in *data* (jq output) is
+# handled at runtime; this protects the scripts themselves.
+*.sh text eol=lf
+hooks.json text eol=lf
