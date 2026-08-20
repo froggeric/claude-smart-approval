@@ -123,4 +123,10 @@ bash 3.2+ (main scripts), shfmt (AST parsing), jq (JSON + AST walking), claude C
 ## Conventions
 
 - The plugin version lives in TWO files: `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` (`metadata.version`). Bump both.
-- Docs style: plain, flowing prose; British English; no em-dashes, no marketing vocabulary. Keep badges and `<details>` blocks. Order: what, why, how it decides, safety (before install). Bold key claims at paragraph openings.
+
+## Writing style
+
+- Plain, flowing prose. British English. No em-dashes, no marketing vocabulary.
+- Write for a reader who arrives asking, in order: what is this, is it safe, how do I control it. Safety comes before the install.
+- Each paragraph's first line should carry its point on its own; bold the key claims so a skimmer gets the story from bold lines and openers alone.
+- Keep the badges and the `<details>` blocks: it is still a technical document.
