@@ -45,7 +45,27 @@ Without shfmt/jq, the hook silently falls back to Claude Code's normal permissio
 
 ### After installing — two manual adjustments worth making
 
-The plugin never modifies your settings (it only *appends* auto-learned allow rules). Two things are worth doing by hand:
+The plugin never modifies your settings (it only *appends* auto-learned allow rules). The easiest way to make these adjustments is to paste the prompt below into a Claude Code session — it adapts to your actual configuration, explains its reasoning, and shows you every change before writing anything:
+
+```text
+Audit my Claude Code permission settings for the smart-approval plugin (v2.1.0+):
+
+1. Look at all four settings layers (~/.claude/settings.json,
+   ~/.claude/settings.local.json, and the project's .claude/ variants).
+   For each Bash allow rule, flag anything dangerous: prefixes like rm,
+   dd, eval, exec, bash/sh/zsh, sudo, su, source, python/python3, perl,
+   ruby, node — and any rule with an inner wildcard before the first
+   space (e.g. Bash(python3* -m venv *) also matches
+   `python3 -c '<arbitrary code>' -m venv x`, which executes the -c
+   code). Remove or narrow each to a tight prefix.
+2. If there is no deny list, add one with at least:
+   Bash(git push --force *), Bash(rm -rf ~ *), Bash(rm -rf /*).
+   Deny is absolute — enforced before the AI ever evaluates a command.
+3. Show me every proposed change as a diff and wait for my approval
+   before writing anything. Do not touch anything else in my settings.
+```
+
+Prefer doing it by hand? The two adjustments, spelled out:
 
 **1. Add deny rules.** They are the deterministic layer under the AI: anything matching your deny list is blocked before AI evaluation, no exceptions — even when hidden inside compound commands. Suggested starters (tune to taste):
 
