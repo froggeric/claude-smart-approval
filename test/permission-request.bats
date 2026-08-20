@@ -7,15 +7,22 @@ load test_helper
 @test "pr: simple deny decision schema is exact" {
   run_hook "rm -rf /" '["Bash(rm *)"]'
   [[ "$status" -eq 0 ]]
-  run bash -c 'printf "%s" "$1" | jq -e '\''.hookSpecificOutput.hookEventName == "PermissionRequest" and .hookSpecificOutput.decision.behavior == "deny" and (.hookSpecificOutput.decision.message | type == "string") and (.systemMessage | type == "string")'\''' _ "$output"
-  [[ "$status" -eq 0 ]]
+  local schema_ok
+  schema_ok=$(printf '%s' "$output" | jq -e '
+    .hookSpecificOutput.hookEventName == "PermissionRequest"
+    and .hookSpecificOutput.decision.behavior == "deny"
+    and (.hookSpecificOutput.decision.message | type == "string")
+    and (.systemMessage | type == "string")
+  ')
+  [[ "$schema_ok" == "true" ]]
 }
 
 @test "pr: compound deny decision schema is exact" {
   run_hook "ls && rm -rf /" '["Bash(rm -rf *)"]'
   [[ "$status" -eq 0 ]]
-  run bash -c 'printf "%s" "$1" | jq -e '\''.hookSpecificOutput.hookEventName == "PermissionRequest" and .hookSpecificOutput.decision.behavior == "deny"'\''' _ "$output"
-  [[ "$status" -eq 0 ]]
+  local schema_ok
+  schema_ok=$(printf '%s' "$output" | jq -e '.hookSpecificOutput.hookEventName == "PermissionRequest" and .hookSpecificOutput.decision.behavior == "deny"')
+  [[ "$schema_ok" == "true" ]]
 }
 
 @test "pr: Stage 2 ask emits nothing (native prompt escalates)" {

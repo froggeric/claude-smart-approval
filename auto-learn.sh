@@ -104,8 +104,13 @@ lock_acquire() {
   while ! mkdir "$lockdir" 2>/dev/null; do
     # Check for stale locks (older than 30 seconds)
     if [[ -d "$lockdir" ]]; then
-      local lock_age
-      lock_age=$(( $(date +%s) - $(stat -f %m "$lockdir" 2>/dev/null || stat -c %Y "$lockdir" 2>/dev/null || echo 0) ))
+      local lock_age lock_mtime
+      # GNU stat first (on macOS/BSD, `stat -c` errors and falls through);
+      # never feed non-numeric output into arithmetic — GNU `stat -f` prints
+      # a "File: ..." header instead of failing, which explodes under set -u.
+      lock_mtime=$(stat -c %Y "$lockdir" 2>/dev/null || stat -f %m "$lockdir" 2>/dev/null || echo 0)
+      [[ "$lock_mtime" =~ ^[0-9]+$ ]] || lock_mtime=0
+      lock_age=$(( $(date +%s) - lock_mtime ))
       if [[ "$lock_age" -gt 30 ]]; then
         local stale_backup="${lockdir}.stale.$$"
         mv "$lockdir" "$stale_backup" 2>/dev/null || continue

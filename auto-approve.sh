@@ -36,7 +36,9 @@ deny() {
 
 # Stage 1 decision logging (deny decisions only — allows come from Stage 2
 # and are logged by smart-approve.sh)
-AUTO_APPROVE_LOG_FILE="${AUTO_APPROVE_LOG_FILE:-$HOME/.claude/auto-approve.log}"
+# `${VAR-default}` (not `:-`) so an explicitly EMPTY value disables logging,
+# instead of being overwritten with the default path.
+AUTO_APPROVE_LOG_FILE="${AUTO_APPROVE_LOG_FILE-$HOME/.claude/auto-approve.log}"
 AUTO_APPROVE_LOG_MAX_LINES="${AUTO_APPROVE_LOG_MAX_LINES:-1000}"
 
 debug() { if $DEBUG; then printf '[approve-compound] %s\n' "$*" >&2; fi; }

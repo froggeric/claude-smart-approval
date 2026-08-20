@@ -56,7 +56,9 @@ JSONEOF
 {"type":"result","result":"{\"decision\":\"ask\",\"reason\":\"uncertain about network access\"}","cost_usd":0.001}
 JSONEOF
 )
-  run bash -c 'printf "%s" "$1" | "$2" test-parse' _ "$claude_output" "$SMART_SCRIPT"
+  # Logging disabled: on machines without ~/.claude the log append's
+  # redirect-open error would leak to stderr and pollute $output
+  SMART_APPROVE_LOG_FILE="" run bash -c 'printf "%s" "$1" | "$2" test-parse' _ "$claude_output" "$SMART_SCRIPT"
   # Ask = no decision = no output; the native prompt escalates to the user
   [[ "$status" -eq 0 ]]
   [[ -z "$output" ]]

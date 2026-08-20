@@ -23,7 +23,9 @@ SMART_APPROVE_AUTO_LEARN="${SMART_APPROVE_AUTO_LEARN:-true}"
 CLAUDE_CMD="${CLAUDE_CMD:-claude}"
 SMART_APPROVE_TIMEOUT="${SMART_APPROVE_TIMEOUT:-25}"
 SMART_APPROVE_DEBUG="${SMART_APPROVE_DEBUG:-false}"
-SMART_APPROVE_LOG_FILE="${SMART_APPROVE_LOG_FILE:-$HOME/.claude/smart-approval.log}"
+# `${VAR-default}` (not `:-`) so an explicitly EMPTY value disables logging,
+# instead of being overwritten with the default path.
+SMART_APPROVE_LOG_FILE="${SMART_APPROVE_LOG_FILE-$HOME/.claude/smart-approval.log}"
 SMART_APPROVE_LOG_MAX_LINES="${SMART_APPROVE_LOG_MAX_LINES:-500}"
 
 # --- Debug logging ---
