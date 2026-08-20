@@ -26,7 +26,24 @@ echo 'ls | grep foo' | ./auto-approve.sh parse
 
 # Debug a full hook decision (deny gate + Stage 2 dispatch)
 echo '{"tool_input":{"command":"ls | grep foo"}}' | ./auto-approve.sh --debug
+
+# Exercise the working tree as a plugin (installed copy untouched), in a pty:
+script -q /tmp/out claude --plugin-dir <repo-root> --settings <default-mode.json> "run exactly: <cmd>" </dev/null
+# then read the two logs and pkill the hung TUI
 ```
+
+Live-test gotchas: headless `claude -p` never fires PermissionRequest (useful only to confirm inactivity). Marker commands must have zero allow AND deny rules in all four settings layers, and commands Claude Code classifies as read-only (`diff --version`) never reach the hook.
+
+## CI
+
+The workflow never auto-runs on push (it is registered, but push triggers are inert; cause unknown). Run it manually:
+
+```bash
+gh workflow run CI --ref master
+gh run watch <run-id> --repo froggeric/claude-smart-approval --exit-status
+```
+
+bats and shellcheck are installed locally via brew: `brew install bats-core shellcheck`.
 
 ## Architecture
 
@@ -70,7 +87,7 @@ Deny rules (and Stage 2's auto-learned allow patterns) are read from (in order):
 
 ## Log review
 
-Stage 1 log (`auto-approve.log`) is deny-only — JSONL with fields `ts`, `cmd`, `decision`, `matched_prefix`, `scope`-less `type` (simple/compound). Allow decisions are Stage 2's and live in `smart-approval.log` (`ts`, `cmd`, `decision` ∈ approve/deny/ask, `reason`, `pattern`, `scope`). Test artifacts have empty `cmd` or canned vectors (`rm -rf /`, `curl https://example.com`, `rm -rf /tmp/test`, `ls; unknown_cmd`, `git status`).
+Stage 1 log (`auto-approve.log`) is deny-only: JSONL with fields `ts`, `cmd`, `decision`, `matched_prefix`, `type` (simple/compound). Allow decisions are Stage 2's and live in `smart-approval.log` (`ts`, `cmd`, `decision` ∈ approve/deny/ask, `reason`, `pattern`, `scope`). Test artifacts have empty `cmd` or canned vectors (`rm -rf /`, `curl https://example.com`, `rm -rf /tmp/test`, `ls; unknown_cmd`, `git status`).
 
 To clean test entries from the logs:
 ```bash
@@ -96,3 +113,14 @@ for f in ~/.claude/settings.json ~/.claude/settings.local.json .claude/settings.
 ## Dependencies
 
 bash 3.2+ (main scripts), shfmt (AST parsing), jq (JSON + AST walking), claude CLI (AI evaluation, optional). CI uses `mfinelli/setup-shfmt@v2` and `apt-get install jq bats`. `.gitattributes` enforces LF line endings for shell scripts (Windows checkouts).
+
+## Shell portability
+
+- Never write a bare `stat -f %m` fallback chain: GNU stat prints a `File: ...` header instead of failing, which explodes under `set -u`. Use the guarded pattern in `auto-learn.sh` `lock_acquire` (GNU `stat -c %Y` first, numeric-validated).
+- Env vars where an empty value means "disabled" (both LOG_FILE vars) use `${VAR-default}`, never `${VAR:-default}`: `:-` overwrites an explicit empty with the default path.
+- Windows jq emits CRLF: every `read` loop consuming jq output strips it (`line="${line%$'\r'}"`). Keep the pattern in any new loop.
+
+## Conventions
+
+- The plugin version lives in TWO files: `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` (`metadata.version`). Bump both.
+- Docs style: plain, flowing prose; British English; no em-dashes, no marketing vocabulary. Keep badges and `<details>` blocks. Order: what, why, how it decides, safety (before install). Bold key claims at paragraph openings.
