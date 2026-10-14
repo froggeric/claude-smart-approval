@@ -15,7 +15,10 @@ prompt, or would auto-deny a headless call)
 
 Stage 1 (fast, no LLM):
   Parse compound command → split into segments → check deny list
-  → DENY (stdout decision object, exit 0) / FALL THROUGH
+  → DENY (stdout decision object, exit 0)
+  → else if EVERY segment matches an allow rule (bare rules exact,
+    starred rules as prefixes) → ALLOW (no model call)
+  → FALL THROUGH
 
 Stage 2 (AI-powered, ~8-13s):
   Build prompt with command + context → call claude -p --model haiku
@@ -41,7 +44,7 @@ Stage 2 (AI-powered, ~8-13s):
 
 Exit code 2 is NOT honored for this event — only the stdout decision object counts, and the script must exit 0.
 
-**Allow (Stage 2 only):**
+**Allow (Stage 1 fast path and Stage 2):**
 ```json
 {"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}
 ```
@@ -81,7 +84,7 @@ echo "$PROMPT" | claude -p \
 
 | File | Responsibility |
 |------|----------------|
-| `auto-approve.sh` | Main hook: Stage 1 prefix matching + Stage 2 dispatch |
+| `auto-approve.sh` | Main hook: Stage 1 deny gate + allow fast path + Stage 2 dispatch |
 | `smart-approve.sh` | AI evaluation: prompt construction, claude invocation, response parsing |
 | `auto-learn.sh` | Pattern normalization, deduplication, settings file manipulation |
 | `eval-prompt.sh` | Prompt evaluation harness: runs templates against test suite with scoring |
@@ -91,15 +94,16 @@ echo "$PROMPT" | claude -p \
 
 ## Test Suite
 
-194 tests in `test/` (all passing with bash 3.2+):
+211 tests in `test/` (all passing with bash 3.2+):
 - `parsing.bats`: Command splitting tests (42 tests)
 - `permissions.bats`: Deny-list matching tests (26 tests)
 - `security.bats`: Security edge cases (33 tests)
 - `smart-approve.bats`: AI evaluation unit tests (30 tests)
 - `auto-learn.bats`: Pattern learning tests (34 tests)
-- `smart-integration.bats`: Stage 2 integration tests (11 tests)
+- `smart-integration.bats`: Stage 2 integration tests (12 tests)
 - `auto-approve-log.bats`: Stage 1 deny logging tests (9 tests)
 - `permission-request.bats`: Hook contract tests (9 tests)
+- `allow-fast-path.bats`: Stage 1 compound-of-allowed tests (16 tests)
 - `test_helper.bash`: Test utilities including mock claude helpers
 
 ## Settings Layers for Auto-Learning

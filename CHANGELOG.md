@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-10-14
+
+### Added
+
+- **Stage 1 allow fast path for compound commands.** A compound whose every parsed part matches one of your allow rules is approved locally, with no model call: each part is individually trusted, so the whole is no riskier than its pieces. Bare rules (`Bash(git status)`) match exactly; starred rules (`Bash(cmd *)`, `Bash(cmd:*)`, `Bash(cmd*)`) match as prefixes, the same distinction Claude Code itself makes. The deny gate still runs first, substitution contents and wrapper-stripped forms must be allowed too, and fast-path approvals are logged to `~/.claude/auto-approve.log` with `"decision":"allow"`. This restores compound-level allow matching that 2.1.0 removed on the belief that Claude Code matches compound parts against allow rules natively; on 2.1.287, compounds of fully allowed commands are still force-prompted and reach the hook (observed in the wild), so those commands now resolve in milliseconds instead of an eight-second model call.
+- **`--allow` flag on auto-approve.sh** for hermetic tests of the fast path, mirroring `--deny`; either flag's presence suppresses settings-file loading.
+
+### Changed
+
+- **Nested classifier sessions are pinned against global settings.** Every nested `claude -p` reads `~/.claude/settings.json` at startup, so a user-level `CLAUDE_CODE_EFFORT_LEVEL=max` or `ultracode: true` was applying to the classifier: slower evaluations, more of them blowing the hook's 30-second ceiling (surfacing as constant native prompts), and workflow planning attempts inside a `--max-turns 1` call. The invocation now passes `--settings` with hooks disabled, ultracode off and effort pinned low. `eval-prompt.sh` is pinned identically, so prompt scores measure the production invocation.
+- **The Stage 1 log records allow decisions too** (`"decision":"allow"`, `"type":"compound"`); it is no longer deny-only.
+
+### Docs
+
+- **GNU coreutils (`gtimeout`) documented as recommended on macOS.** It caps the Stage 2 model call at 25 seconds; without it a hung provider drifts past the hook ceiling and orphans a `claude` process per stuck evaluation.
+- 17 new BATS tests (16 fast-path, 1 nested-session pinning); 211 total.
+
 ## [2.1.0] - 2026-08-19
 
 ### Changed

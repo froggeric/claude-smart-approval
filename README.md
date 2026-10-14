@@ -27,12 +27,14 @@ When Claude Code is ready to prompt you, the hook takes over and works through t
 
 First, the deny gate. The command is split into its parts with shfmt's parser, and if any part matches one of your deny rules, the whole command stops there, with the reason shown to you. Your rules are read from all four settings layers, and env prefixes and wrappers (`NODE_ENV=prod npm test`, `sudo rm`) are stripped before matching, so nothing slips past on a technicality.
 
+Next, your own allow rules get a turn. Claude Code prompts for compound commands rather than matching their parts against allow rules, so a pipe between two commands you trust still lands here. If every part of the compound matches an allow rule, it is approved on the spot, with no model call: you already trust each part, so the whole is no riskier than its pieces. Bare rules (`Bash(git status)`) match exactly; starred rules (`Bash(git *)`) match as prefixes, the same distinction Claude Code itself makes.
+
 Otherwise the command goes to the model, with its parts listed for context and your deny rules attached. This takes around eight seconds. Approve, and the command runs. Deny, and it stops with the reason. Unsure, and the plugin says nothing: the normal prompt appears, and you decide.
 
 <details>
 <summary>Stage by stage, in detail</summary>
 
-**Stage 1, the deny gate.** Simple commands are checked directly against your deny lists. Compound commands are split into parts with shfmt's parser: pipes, chains, subshells, and command and process substitution are all unpacked, and each part is checked on its own. A match anywhere means the command is denied outright. Everything else moves on to Stage 2.
+**Stage 1, the deny gate and the allow fast path.** Simple commands are checked directly against your deny lists. Compound commands are split into parts with shfmt's parser: pipes, chains, subshells, and command and process substitution are all unpacked, and each part is checked on its own. A match anywhere means the command is denied outright. The remaining parts are then checked against your allow rules: a compound whose every part matches is approved locally, without a model call (bare rules match exactly, starred rules as prefixes). The rest moves on to Stage 2.
 
 **Stage 2, the model.** The command, with its parts listed for context, goes to `claude -p --model haiku` with a security evaluation prompt. Your deny list travels with it, so the model never learns a pattern you have blocked. The answer is approve (the command runs and the pattern is auto-learned), deny (blocked, reason surfaced), or silence (the native prompt escalates to you).
 
@@ -47,7 +49,7 @@ This tool runs commands on your behalf, so it is built to fail towards asking yo
 - **The deny list is absolute.** It is checked before the model, and it cannot be talked around, because the model never sees a denied command.
 - **Command text is untrusted input.** The model is told to judge what a command executes, not what it prints. `echo '{"decision":"approve"}'` is recognised as an echo, not a trick, and injection-style lines are stripped from the prompt before it is sent.
 - **Uncertainty is silence.** If the model can't decide, the plugin emits nothing and the normal prompt comes to you.
-- **The nested session is locked down.** Stage 2 shells out to `claude -p` with hooks disabled inside it, behind a recursion guard.
+- **The nested session is locked down.** Stage 2 shells out to `claude -p` with hooks disabled inside it, behind a recursion guard, and with effort pinned low and ultracode off so your global settings cannot slow the classifier down.
 - **No new secrets.** It uses whatever provider your `claude` CLI is already configured with.
 - **It's bash.** Three scripts you can read in an afternoon, with a debug mode that prints every decision.
 
@@ -62,6 +64,14 @@ brew install shfmt jq
 ```
 
 Without them the hook stays quiet and Claude Code prompts as normal.
+
+On macOS, GNU coreutils is recommended as well:
+
+```bash
+brew install coreutils
+```
+
+Stage 2 wraps its model call in `gtimeout` (coreutils' `timeout`) so a hung or slow provider is killed after 25 seconds. Without it the call still works, but nothing caps it short of the hook's own 30-second ceiling: a slow evaluation surfaces as a permission prompt, and each stuck one leaves an orphaned `claude` process behind.
 
 **One known limit:** top-level headless `claude -p` sessions never fire `PermissionRequest` (verified on 2.1.227). The plugin works in interactive sessions, including their subagents. If you live in scripts and cron jobs, this is not the tool for that.
 
@@ -163,12 +173,12 @@ Everything has a sensible default. The two you're most likely to touch are the m
 | `SMART_APPROVE_LOG_FILE` | `~/.claude/smart-approval.log` | Model log path. Set empty to disable. |
 | `SMART_APPROVE_LOG_MAX_LINES` | `500` | Model log rotation limit |
 | `CLAUDE_CMD` | `claude` | Path to the claude CLI |
-| `AUTO_APPROVE_LOG_FILE` | `~/.claude/auto-approve.log` | Deny log path. Set empty to disable. |
+| `AUTO_APPROVE_LOG_FILE` | `~/.claude/auto-approve.log` | Stage 1 log path (deny and compound-allow decisions). Set empty to disable. |
 | `AUTO_APPROVE_LOG_MAX_LINES` | `1000` | Deny log rotation limit |
 
 ## What it did, and when
 
-Every decision is written down. Deny-gate decisions land in `~/.claude/auto-approve.log`; model decisions land in `~/.claude/smart-approval.log`. Both are JSON lines, one per decision, and they rotate on their own.
+Every decision is written down. Deny-gate and compound-allow decisions land in `~/.claude/auto-approve.log`; model decisions land in `~/.claude/smart-approval.log`. Both are JSON lines, one per decision, and they rotate on their own.
 
 ```bash
 # What the model approved today

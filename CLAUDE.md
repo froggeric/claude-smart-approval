@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Claude Code PermissionRequest hook — an AI permission tier for Bash commands. Fires only when Claude Code is about to prompt the user (requires Claude Code ≥ 2.0.45; top-level headless `claude -p` sessions don't fire the event). Stage 1 parses compound commands (pipes, chains, subshells) via shfmt AST and denies anything matching the user's deny lists. Everything else falls through to Stage 2, which evaluates via `claude -p` and emits an allow/deny decision object — or nothing, which escalates to the native prompt.
+Claude Code PermissionRequest hook — an AI permission tier for Bash commands. Fires only when Claude Code is about to prompt the user (requires Claude Code ≥ 2.0.45; top-level headless `claude -p` sessions don't fire the event). Stage 1 parses compound commands (pipes, chains, subshells) via shfmt AST, denies anything matching the user's deny lists, then approves compounds whose every parsed segment matches an allow rule (bare rules exact, starred rules as prefixes). Everything else falls through to Stage 2, which evaluates via `claude -p` and emits an allow/deny decision object — or nothing, which escalates to the native prompt.
 
 ## Commands
 
@@ -49,7 +49,7 @@ bats and shellcheck are installed locally via brew: `brew install bats-core shel
 
 Three-script pipeline invoked as a Claude Code hook:
 
-1. **`auto-approve.sh`** — Entry point. Reentrancy-guarded (`SMART_APPROVE_ACTIVE`). Stage 1: loads deny rules from settings files, parses compound commands via shfmt AST, denies any matching segment (stdout decision object + exit 0 — PermissionRequest ignores exit codes). Stage 2: dispatches everything else to smart-approve.sh and relays its decision.
+1. **`auto-approve.sh`** — Entry point. Reentrancy-guarded (`SMART_APPROVE_ACTIVE`). Stage 1: loads deny AND allow rules from settings files, parses compound commands via shfmt AST, denies any matching segment (stdout decision object + exit 0 — PermissionRequest ignores exit codes), then fast-path-approves compounds whose every segment matches an allow rule. Stage 2: dispatches everything else to smart-approve.sh and relays its decision.
 
 2. **`smart-approve.sh`** — AI evaluation. Builds a security classification prompt, calls `claude -p --model haiku --settings '{"disableAllHooks":true}'` (the old `--bare` flag skipped OAuth/keychain auth), parses the JSON response into allow/deny/silent decisions. Includes prompt injection sanitization. Silence (ask/failure) = native prompt.
 
@@ -64,16 +64,17 @@ Supporting files:
 
 ## Testing
 
-194 BATS tests in `test/`. Test helpers in `test/test_helper.bash`:
+211 BATS tests in `test/`. Test helpers in `test/test_helper.bash`:
 
 - `run_parse "cmd"` — test command extraction (parse mode)
 - `run_hook "cmd" '["Bash(rm *)"]'` — test Stage 1 deny gate; the second argument is the DENY list and is always passed (even `[]`) so real settings files are never read
+- `run_hook_allow "cmd" '["Bash(ls *)"]' '["Bash(rm *)"]'` — test the Stage 1 allow fast path; second argument is the ALLOW list, third the deny list; both always passed for hermeticity
 - `run_hook_smart "cmd" '[]' "$mock_response"` — test Stage 2 with mocked `claude -p`
 - `create_mock_claude` — creates a temp script that returns `$MOCK_RESPONSE`, cleaned up automatically
 
 Stage 1 tests disable smart approval via `SMART_APPROVE_ENABLED=false`, the log via `AUTO_APPROVE_LOG_FILE=""`, and the reentrancy guard via `SMART_APPROVE_ACTIVE=` (empty — the guard checks non-empty). Stage 2 tests use `CLAUDE_CMD` to point at a mock and `SMART_APPROVE_AUTO_LEARN=false` to skip file writes.
 
-Allow decisions only exist via Stage 2 (there is no allow fast path); `assert_fallthrough` requires exit 0 with completely empty stdout; `assert_denied` requires exit 0 plus the deny decision object on stdout.
+Allow decisions come from the Stage 1 fast path (`assert_approved`) and Stage 2; `assert_fallthrough` requires exit 0 with completely empty stdout; `assert_denied` requires exit 0 plus the deny decision object on stdout.
 
 Environment variables for logging:
 - `AUTO_APPROVE_LOG_FILE` — Stage 1 deny log path (default: `~/.claude/auto-approve.log`, set empty to disable)
@@ -87,7 +88,7 @@ Deny rules (and Stage 2's auto-learned allow patterns) are read from (in order):
 
 ## Log review
 
-Stage 1 log (`auto-approve.log`) is deny-only: JSONL with fields `ts`, `cmd`, `decision`, `matched_prefix`, `type` (simple/compound). Allow decisions are Stage 2's and live in `smart-approval.log` (`ts`, `cmd`, `decision` ∈ approve/deny/ask, `reason`, `pattern`, `scope`). Test artifacts have empty `cmd` or canned vectors (`rm -rf /`, `curl https://example.com`, `rm -rf /tmp/test`, `ls; unknown_cmd`, `git status`).
+Stage 1 log (`auto-approve.log`) records deny and fast-path allow decisions: JSONL with fields `ts`, `cmd`, `decision` ∈ deny/allow, `matched_prefix`, `type` (simple/compound). Model decisions live in `smart-approval.log` (`ts`, `cmd`, `decision` ∈ approve/deny/ask, `reason`, `pattern`, `scope`). Test artifacts have empty `cmd` or canned vectors (`rm -rf /`, `curl https://example.com`, `rm -rf /tmp/test`, `ls; unknown_cmd`, `git status`).
 
 To clean test entries from the logs:
 ```bash
@@ -112,7 +113,7 @@ for f in ~/.claude/settings.json ~/.claude/settings.local.json .claude/settings.
 
 ## Dependencies
 
-bash 3.2+ (main scripts), shfmt (AST parsing), jq (JSON + AST walking), claude CLI (AI evaluation, optional). CI uses `mfinelli/setup-shfmt@v2` and `apt-get install jq bats`. `.gitattributes` enforces LF line endings for shell scripts (Windows checkouts).
+bash 3.2+ (main scripts), shfmt (AST parsing), jq (JSON + AST walking), claude CLI (AI evaluation, optional), GNU coreutils on macOS (recommended: provides `gtimeout`, which caps the Stage 2 model call at 25s; without it a hung provider drifts past the 30s hook ceiling and orphans a `claude` process). CI uses `mfinelli/setup-shfmt@v2` and `apt-get install jq bats`. `.gitattributes` enforces LF line endings for shell scripts (Windows checkouts).
 
 ## Shell portability
 

@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Unknown Bash commands evaluated by AI before Claude Code prompts you — deny list enforced, injection-resistant prompts, approved patterns auto-learned. Requires Claude Code >= 2.0.45, shfmt, jq (brew install shfmt jq). See github.com/froggeric/claude-smart-approval for security notices.",
-    "version": "2.1.0",
+    "version": "2.2.0",
     "pluginRoot": "./"
   },
   "plugins": [
