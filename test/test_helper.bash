@@ -6,8 +6,9 @@
 #   run_hook   "cmd" [DENY]     -> test Stage 1 deny gate (stdin JSON + deny list)
 #
 # run_hook ALWAYS passes --deny (even '[]'): the flag's presence suppresses
-# real-settings loading, keeping tests hermetic. Allow decisions are only
-# produced by Stage 2 — see run_hook_smart.
+# real-settings loading (deny AND allow lists), keeping tests hermetic.
+# Allow decisions come from the Stage 1 fast path (run_hook_allow) and from
+# Stage 2 (run_hook_smart).
 
 HOOK_SCRIPT="${BATS_TEST_DIRNAME}/../auto-approve.sh"
 
@@ -70,7 +71,24 @@ run_hook() {
       _ "$json" "$HOOK_SCRIPT" "$deny"
 }
 
-# Assert hook output is an allow decision (only Stage 2 produces allows).
+# Run the Stage 1 hook with an allow list (fast-path tests).
+# $1 = command string, $2 = allow list JSON (defaults '[]'),
+# $3 = deny list JSON (defaults '[]'). Both flags are always passed so real
+# settings files are never read.
+run_hook_allow() {
+  local command="$1"
+  local allow="${2:-[]}"
+  local deny="${3:-[]}"
+  local json
+  json=$(jq -n --arg cmd "$command" '{"tool_input":{"command":$cmd}}')
+  # Stage 1 only — disable smart approval by default
+  SMART_APPROVE_ENABLED=false AUTO_APPROVE_LOG_FILE="" \
+  SMART_APPROVE_ACTIVE= \
+    run bash -c 'printf "%s" "$1" | "$2" --deny "$3" --allow "$4"' \
+    _ "$json" "$HOOK_SCRIPT" "$deny" "$allow"
+}
+
+# Assert hook output is an allow decision (Stage 1 fast path or Stage 2).
 assert_approved() {
   [[ "$status" -eq 0 ]] || {
     echo "# expected ALLOW (exit 0), got exit $status" >&3

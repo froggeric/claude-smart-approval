@@ -156,3 +156,51 @@ load test_helper
   [[ "$status" -eq 0 ]]
   [[ "$output" == *'"behavior":"deny"'* ]]
 }
+
+# -- nested session pinning --
+
+@test "int: nested claude session is pinned against global settings" {
+  # Every nested claude reads the user's settings at startup, so a global
+  # CLAUDE_CODE_EFFORT_LEVEL=max or ultracode:true would apply to this
+  # one-shot classifier: slower evaluations, timeout-driven prompts, and in
+  # the ultracode case an attempt to plan workflows inside a --max-turns 1
+  # call. The invocation must pin effort low and ultracode off.
+  local TEST_DIR args_file mock_cmd json mock_resp
+  TEST_DIR=$(mktemp -d)
+  args_file="$TEST_DIR/args"
+  mock_resp='{"type":"result","result":"{\"decision\":\"ask\",\"reason\":\"x\"}","cost_usd":0.001}'
+  mock_cmd="$TEST_DIR/mock-claude"
+  cat > "$mock_cmd" <<'MOCKEOF'
+#!/usr/bin/env bash
+printf '%s\n' "$@" > "$CAPTURE_ARGS"
+printf '%s' "$MOCK_RESPONSE"
+MOCKEOF
+  chmod +x "$mock_cmd"
+
+  json=$(jq -n --arg cmd "unknown_cmd" '{"tool_input":{"command":$cmd}}')
+  SMART_APPROVE_ENABLED=true SMART_APPROVE_AUTO_LEARN=false \
+  SMART_APPROVE_ACTIVE= \
+  CLAUDE_CMD="$mock_cmd" MOCK_RESPONSE="$mock_resp" CAPTURE_ARGS="$args_file" \
+  AUTO_APPROVE_LOG_FILE="" \
+    run bash -c 'printf "%s" "$1" | "$2" --deny "[]"' \
+      _ "$json" "$HOOK_SCRIPT"
+
+  [[ -s "$args_file" ]] || {
+    echo "# nested claude was never invoked" >&3
+    rm -rf "$TEST_DIR"
+    return 1
+  }
+  local settings_arg
+  settings_arg=$(grep -o '{"disableAllHooks".*}' "$args_file" | head -1)
+  [[ "$settings_arg" == *'"ultracode":false'* ]] || {
+    echo "# ultracode not pinned off in: $settings_arg" >&3
+    rm -rf "$TEST_DIR"
+    return 1
+  }
+  [[ "$settings_arg" == *'"CLAUDE_CODE_EFFORT_LEVEL":"low"'* ]] || {
+    echo "# effort not pinned low in: $settings_arg" >&3
+    rm -rf "$TEST_DIR"
+    return 1
+  }
+  rm -rf "$TEST_DIR"
+}

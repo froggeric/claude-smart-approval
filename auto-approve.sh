@@ -4,8 +4,9 @@
 #
 # AI permission tier for Bash commands Claude Code is about to prompt for.
 # Parses compound commands (pipes, chains, subshells) into sub-commands,
-# actively denies anything matching your deny list, and evaluates the rest
-# via smart-approve.sh (claude -p). Emits a PermissionRequest decision
+# actively denies anything matching your deny list, approves compounds whose
+# every sub-command matches an allow rule, and evaluates the rest via
+# smart-approve.sh (claude -p). Emits a PermissionRequest decision
 # object on allow/deny; emits nothing to fall through to the native prompt.
 #
 # See README.md for full documentation.
@@ -34,8 +35,18 @@ deny() {
   exit 0
 }
 
-# Stage 1 decision logging (deny decisions only — allows come from Stage 2
-# and are logged by smart-approve.sh)
+# Approve without AI evaluation — the Stage 1 fast path for compounds whose
+# every parsed segment matches an allow rule. Each segment is individually
+# trusted by the user's own rules, so the compound is exactly as trusted as
+# its parts.
+allow_decision() {
+  jq -cn '{hookSpecificOutput:{hookEventName:"PermissionRequest",decision:{behavior:"allow"}}}'
+  # Same contract as deny(): the decision object on stdout + exit 0.
+  exit 0
+}
+
+# Stage 1 decision logging (deny decisions and fast-path allows; Stage 2's
+# own decisions are logged by smart-approve.sh)
 # `${VAR-default}` (not `:-`) so an explicitly EMPTY value disables logging,
 # instead of being overwritten with the default path.
 AUTO_APPROVE_LOG_FILE="${AUTO_APPROVE_LOG_FILE-$HOME/.claude/auto-approve.log}"
@@ -87,9 +98,40 @@ find_git_root() {
   fi
 }
 
-# Populates the caller's denied_prefixes array from the deny lists of all
-# settings layers. Allow lists are intentionally not read: natively allowed
-# commands never prompt, so the hook never sees them.
+# Classify a Bash allow rule into a marker line. Star rules (Bash(cmd *),
+# Bash(cmd:*), Bash(cmd*)) become "allow:star:<prefix>" and match as
+# prefixes; bare rules (Bash(cmd)) become "allow:exact:<cmd>" and match
+# exactly — mirroring native Claude Code semantics, where a star means
+# prefix and its absence means exact. Prefix-matching a bare rule would
+# broaden trust, so the distinction must survive loading.
+read -r -d '' ALLOW_CLASSIFY_FILTER << 'JQEOF' || true
+def extract_prefix: sub("^Bash\\("; "") | sub("( \\*|\\*|:\\*)\\)$"; "") | sub("\\)$"; "");
+def classify_allow: if test("( \\*|\\*|:\\*)\\)$") then "allow:star:" + extract_prefix else "allow:exact:" + extract_prefix end;
+JQEOF
+readonly ALLOW_CLASSIFY_FILTER
+
+# Dispatch "deny:"/"allow:star:"/"allow:exact:" marker lines from stdin into
+# the permission arrays. Shared by settings loading and the --deny/--allow
+# test flags.
+consume_permission_lines() {
+  local line prefix
+  while IFS= read -r line; do
+    # Native Windows jq (WinGet/choco) writes CRLF; `read -r` keeps the \r, which
+    # would make every prefix unmatchable. Harmless no-op where jq emits LF.
+    line="${line%$'\r'}"
+    case "$line" in
+      deny:*) denied_prefixes+=("${line#deny:}") ;;
+      allow:star:*) prefix="${line#allow:star:}"; [[ -n "$prefix" ]] && allowed_prefixes+=("$prefix") ;;
+      allow:exact:*) prefix="${line#allow:exact:}"; [[ -n "$prefix" ]] && allowed_exact+=("$prefix") ;;
+    esac
+  done
+}
+
+# Populates denied_prefixes, allowed_prefixes and allowed_exact from the deny
+# and allow lists of all settings layers. Allow rules feed the Stage 1 fast
+# path: a compound whose every segment matches an allow rule is approved
+# without an AI evaluation. Natively allowed simple commands never reach the
+# hook, so the fast path only ever fires for compounds.
 load_prefixes() {
   local git_root
   git_root=$(find_git_root 2>/dev/null || true)
@@ -104,21 +146,13 @@ load_prefixes() {
     files+=(".claude/settings.json" ".claude/settings.local.json")
   fi
 
-  local line
-  while IFS= read -r line; do
-    # Native Windows jq (WinGet/choco) writes CRLF; `read -r` keeps the \r, which
-    # would make every prefix unmatchable. Harmless no-op where jq emits LF.
-    line="${line%$'\r'}"
-    case "$line" in
-      deny:*) denied_prefixes+=("${line#deny:}") ;;
-    esac
-  done < <(
+  consume_permission_lines < <(
     for file in "${files[@]}"; do
       [[ -f "$file" ]] || continue
-      debug "Reading deny prefixes from: $file"
-      jq -r '
-        def extract_prefix: sub("^Bash\\("; "") | sub("( \\*|\\*|:\\*)\\)$"; "") | sub("\\)$"; "");
-        (.permissions.deny[]? // empty | select(startswith("Bash(")) | "deny:" + extract_prefix)
+      debug "Reading permission prefixes from: $file"
+      jq -r "$ALLOW_CLASSIFY_FILTER"'
+        (.permissions.deny[]? // empty | select(startswith("Bash(")) | "deny:" + extract_prefix),
+        (.permissions.allow[]? // empty | select(startswith("Bash(")) | classify_allow)
       ' "$file" 2>/dev/null || true
     done | sort -u
   )
@@ -330,6 +364,31 @@ any_denied() {
   return 1
 }
 
+# Return 0 if every command matches an allow rule: bare Bash(cmd) rules match
+# exactly (env- and wrapper-stripped forms included); starred rules match as
+# prefixes, the same semantics as the deny side. Any unmatched segment means
+# the compound needs Stage 2 evaluation.
+all_allowed() {
+  [[ ${#allowed_prefixes[@]} -eq 0 && ${#allowed_exact[@]} -eq 0 ]] && return 1
+
+  local cmd exact candidate matched
+  for cmd in "$@"; do
+    [[ -z "$cmd" ]] && continue
+    matched=false
+    if [[ ${#allowed_exact[@]} -gt 0 ]]; then
+      strip_env_vars "$cmd"
+      for exact in "${allowed_exact[@]}"; do
+        for candidate in "${_STRIP_CANDIDATES[@]}"; do
+          if [[ "$candidate" == "$exact" ]]; then matched=true; break 2; fi
+        done
+      done
+    fi
+    $matched && continue
+    matches_prefix_list "$cmd" "allow" ${allowed_prefixes[@]+"${allowed_prefixes[@]}"} || return 1
+  done
+  return 0
+}
+
 # ---------------------------------------------------------------------------
 # Stage 2: Smart approval via AI evaluation (smart-approve.sh + auto-learn.sh)
 # ---------------------------------------------------------------------------
@@ -411,12 +470,13 @@ run_smart_approve() {
 # ---------------------------------------------------------------------------
 
 main() {
-  local deny_json="" mode="hook" cwd=""
+  local deny_json="" allow_json="" mode="hook" cwd=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --debug) DEBUG=true; shift ;;
       --deny) deny_json="$2"; shift 2 ;;
+      --allow) allow_json="$2"; shift 2 ;;
       parse) mode="parse"; shift ;;
       *) shift ;;
     esac
@@ -456,19 +516,21 @@ main() {
 
   debug "Command: $command"
 
-  # Load deny list (from settings, or from --deny for testing; the flag's
-  # presence — even with an empty array — suppresses settings-file loading)
-  local -a denied_prefixes=()
-  if [[ -n "$deny_json" ]]; then
-    local line
-    while IFS= read -r line; do
-      line="${line%$'\r'}"   # strip CR from native Windows jq output
-      [[ -n "$line" ]] && denied_prefixes+=("$line")
-    done < <(jq -r '.[] | sub("^Bash\\("; "") | sub("( \\*|\\*|:\\*)\\)$"; "") | sub("\\)$"; "")' <<< "$deny_json" 2>/dev/null)
+  # Load permission lists (from settings, or from --deny/--allow for testing;
+  # either flag's presence — even with an empty array — suppresses
+  # settings-file loading, keeping tests hermetic)
+  local -a denied_prefixes=() allowed_prefixes=() allowed_exact=()
+  if [[ -n "$deny_json" || -n "$allow_json" ]]; then
+    if [[ -n "$deny_json" ]]; then
+      consume_permission_lines < <(jq -r '.[] | select(startswith("Bash(")) | "deny:" + (sub("^Bash\\("; "") | sub("( \\*|\\*|:\\*)\\)$"; "") | sub("\\)$"; ""))' <<< "$deny_json" 2>/dev/null)
+    fi
+    if [[ -n "$allow_json" ]]; then
+      consume_permission_lines < <(jq -r "$ALLOW_CLASSIFY_FILTER"' .[]? // empty | select(startswith("Bash(")) | classify_allow' <<< "$allow_json" 2>/dev/null)
+    fi
   else
     load_prefixes
   fi
-  debug "Loaded ${#denied_prefixes[@]} deny prefixes"
+  debug "Loaded ${#denied_prefixes[@]} deny prefixes, ${#allowed_prefixes[@]} star allow prefixes, ${#allowed_exact[@]} exact allow rules"
 
   # Simple command — deny-gate, then Stage 2
   if ! needs_compound_parse "$command"; then
@@ -495,6 +557,14 @@ main() {
   if any_denied "${extracted_commands[@]}"; then
     log_stage1_decision "$command" "deny" "$_MATCHED_PREFIX" "compound"
     deny "Compound command contains a denied sub-command"
+  fi
+
+  # Fast path: every segment matches an allow rule, so the user already
+  # trusts each part individually — approve locally, no AI evaluation.
+  if all_allowed "${extracted_commands[@]}"; then
+    debug "All segments allowed; fast-path approve"
+    log_stage1_decision "$command" "allow" "$_MATCHED_PREFIX" "compound"
+    allow_decision
   fi
 
   # Stage 2: Smart approval for unknown compound commands

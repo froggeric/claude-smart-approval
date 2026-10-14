@@ -11,6 +11,10 @@ SUITE_FILE="test/prompt-eval-suite.json"
 RUNS=3
 MODEL="haiku"
 TIMEOUT_SECS=25
+# Same nested-session pin as smart-approve.sh, so eval scores measure the
+# production invocation (effort low, ultracode off) rather than whatever the
+# user's global settings happen to be.
+NESTED_SETTINGS='{"disableAllHooks":true,"ultracode":false,"env":{"CLAUDE_CODE_EFFORT_LEVEL":"low"}}'
 
 # --- Configuration ---
 while [[ $# -gt 0 ]]; do
@@ -170,14 +174,14 @@ for ((i=0; i<total_cases; i++)); do
         --output-format json \
         --dangerously-skip-permissions \
         --max-turns 1 \
-        --settings '{"disableAllHooks":true}' 2>/dev/null) || true
+        --settings "$NESTED_SETTINGS" 2>/dev/null) || true
     else
       local_response=$(printf '%s' "$prompt" | claude -p \
         --model "$MODEL" \
         --output-format json \
         --dangerously-skip-permissions \
         --max-turns 1 \
-        --settings '{"disableAllHooks":true}' 2>/dev/null) || true
+        --settings "$NESTED_SETTINGS" 2>/dev/null) || true
     fi
 
     parsed=$(parse_eval_response "$local_response")

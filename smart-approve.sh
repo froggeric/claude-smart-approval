@@ -12,8 +12,8 @@ set -uo pipefail
 
 # Reentrancy guard producer: exported into the `claude -p` child's environment
 # so that if the nested session ever loads hooks, auto-approve.sh exits early
-# instead of recursing. (--settings '{"disableAllHooks":true}' below is the
-# primary guard; this sentinel survives config drift.)
+# instead of recursing. (--settings "$NESTED_SETTINGS" below is the primary
+# guard; this sentinel survives config drift.)
 export SMART_APPROVE_ACTIVE=true
 
 # --- Configuration (overridable via environment) ---
@@ -27,6 +27,16 @@ SMART_APPROVE_DEBUG="${SMART_APPROVE_DEBUG:-false}"
 # instead of being overwritten with the default path.
 SMART_APPROVE_LOG_FILE="${SMART_APPROVE_LOG_FILE-$HOME/.claude/smart-approval.log}"
 SMART_APPROVE_LOG_MAX_LINES="${SMART_APPROVE_LOG_MAX_LINES:-500}"
+
+# Pin the nested session against the user's global settings: every nested
+# claude reads ~/.claude/settings.json at startup, so a global effort level
+# (CLAUDE_CODE_EFFORT_LEVEL=max) or ultracode:true would otherwise apply to
+# this one-shot classifier — slower evaluations blowing the hook timeout, and
+# workflow planning attempts inside a --max-turns 1 call. Effort low keeps
+# classification fast; ultracode off keeps it a plain call. disableAllHooks
+# remains the primary recursion guard (SMART_APPROVE_ACTIVE is the sentinel
+# that survives config drift).
+NESTED_SETTINGS='{"disableAllHooks":true,"ultracode":false,"env":{"CLAUDE_CODE_EFFORT_LEVEL":"low"}}'
 
 # --- Debug logging ---
 smart_debug() {
@@ -264,7 +274,7 @@ evaluate_command() {
       --output-format json \
       --dangerously-skip-permissions \
       --max-turns 1 \
-      --settings '{"disableAllHooks":true}' 2>/dev/null) || true
+      --settings "$NESTED_SETTINGS" 2>/dev/null) || true
   else
     # No timeout available — rely on hook's own timeout
     response=$(printf '%s' "$prompt" | "$CLAUDE_CMD" -p \
@@ -272,7 +282,7 @@ evaluate_command() {
       --output-format json \
       --dangerously-skip-permissions \
       --max-turns 1 \
-      --settings '{"disableAllHooks":true}' 2>/dev/null) || true
+      --settings "$NESTED_SETTINGS" 2>/dev/null) || true
   fi
 
   [[ -z "$response" ]] && return 1
