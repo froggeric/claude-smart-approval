@@ -1,7 +1,7 @@
 # claude-smart-approval
 
-[![Version](https://img.shields.io/badge/version-2.1.0-blue.svg)](https://github.com/froggeric/claude-smart-approval/blob/master/CHANGELOG.md)
-[![Tests](https://img.shields.io/badge/tests-194%20passing-brightgreen.svg)](https://github.com/froggeric/claude-smart-approval/tree/master/test)
+[![Version](https://img.shields.io/badge/version-2.2.0-blue.svg)](https://github.com/froggeric/claude-smart-approval/blob/master/CHANGELOG.md)
+[![Tests](https://img.shields.io/badge/tests-211%20passing-brightgreen.svg)](https://github.com/froggeric/claude-smart-approval/tree/master/test)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](https://github.com/froggeric/claude-smart-approval/blob/master/LICENSE)
 [![Claude Code Hooks](https://img.shields.io/badge/Claude%20Code-hooks-orange.svg)](https://code.claude.com/docs/en/hooks)
 
@@ -91,7 +91,7 @@ The plugin never edits your settings; the only thing it ever writes is an allow 
 The easy way is to paste this into a Claude Code session and let it do the work for you:
 
 ```text
-Audit my Claude Code permission settings for the smart-approval plugin (v2.1.0+):
+Audit my Claude Code permission settings for the smart-approval plugin (v2.2.0+):
 
 1. Look at all four settings layers (~/.claude/settings.json,
    ~/.claude/settings.local.json, and the project's .claude/ variants).
