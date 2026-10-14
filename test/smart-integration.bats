@@ -202,5 +202,29 @@ MOCKEOF
     rm -rf "$TEST_DIR"
     return 1
   }
+  [[ "$settings_arg" == *'"CLAUDE_CODE_DISABLE_CLAUDE_MDS":"1"'* ]] || {
+    echo "# CLAUDE.md loading not disabled in: $settings_arg" >&3
+    rm -rf "$TEST_DIR"
+    return 1
+  }
+  [[ "$settings_arg" == *'"CLAUDE_CODE_DISABLE_AUTO_MEMORY":"1"'* ]] || {
+    echo "# auto memory not disabled in: $settings_arg" >&3
+    rm -rf "$TEST_DIR"
+    return 1
+  }
+  local flags_expected=(--disable-slash-commands --strict-mcp-config)
+  local flag
+  for flag in "${flags_expected[@]}"; do
+    grep -qx -- "$flag" "$args_file" || {
+      echo "# missing flag: $flag" >&3
+      rm -rf "$TEST_DIR"
+      return 1
+    }
+  done
+  grep -q '{"mcpServers":{}}' "$args_file" || {
+    echo "# missing empty --mcp-config" >&3
+    rm -rf "$TEST_DIR"
+    return 1
+  }
   rm -rf "$TEST_DIR"
 }

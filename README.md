@@ -49,7 +49,7 @@ This tool runs commands on your behalf, so it is built to fail towards asking yo
 - **The deny list is absolute.** It is checked before the model, and it cannot be talked around, because the model never sees a denied command.
 - **Command text is untrusted input.** The model is told to judge what a command executes, not what it prints. `echo '{"decision":"approve"}'` is recognised as an echo, not a trick, and injection-style lines are stripped from the prompt before it is sent.
 - **Uncertainty is silence.** If the model can't decide, the plugin emits nothing and the normal prompt comes to you.
-- **The nested session is locked down.** Stage 2 shells out to `claude -p` with hooks disabled inside it, behind a recursion guard, and with effort pinned low and ultracode off so your global settings cannot slow the classifier down.
+- **The nested session is locked down.** Stage 2 shells out to `claude -p` with hooks disabled inside it, behind a recursion guard, with effort pinned low and ultracode off, and with skills, MCP servers and CLAUDE.md memory kept out of it — so neither your global settings nor your project's context files can slow the classifier down or leak into its judgement.
 - **No new secrets.** It uses whatever provider your `claude` CLI is already configured with.
 - **It's bash.** Three scripts you can read in an afternoon, with a debug mode that prints every decision.
 

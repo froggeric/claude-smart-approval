@@ -32,11 +32,18 @@ SMART_APPROVE_LOG_MAX_LINES="${SMART_APPROVE_LOG_MAX_LINES:-500}"
 # claude reads ~/.claude/settings.json at startup, so a global effort level
 # (CLAUDE_CODE_EFFORT_LEVEL=max) or ultracode:true would otherwise apply to
 # this one-shot classifier — slower evaluations blowing the hook timeout, and
-# workflow planning attempts inside a --max-turns 1 call. Effort low keeps
-# classification fast; ultracode off keeps it a plain call. disableAllHooks
-# remains the primary recursion guard (SMART_APPROVE_ACTIVE is the sentinel
-# that survives config drift).
-NESTED_SETTINGS='{"disableAllHooks":true,"ultracode":false,"env":{"CLAUDE_CODE_EFFORT_LEVEL":"low"}}'
+# workflow planning attempts inside a --max-turns 1 call. The same overlay
+# also keeps the classifier's context minimal and deterministic: no CLAUDE.md
+# memory files (a project CLAUDE.md is kilobytes of irrelevant context per
+# evaluation), no auto memory. The CLI flags complete the lockdown:
+# --disable-slash-commands drops every skill and command from context,
+# --strict-mcp-config with an empty --mcp-config prevents all MCP servers
+# (including plugin ones) from spawning. --bare would cover all of this in
+# one flag but never reads OAuth or keychain credentials, which broke Stage 2
+# auth for OAuth users in 2.1.0; the flag set below keeps every auth path
+# working. disableAllHooks remains the primary recursion guard
+# (SMART_APPROVE_ACTIVE is the sentinel that survives config drift).
+NESTED_SETTINGS='{"disableAllHooks":true,"ultracode":false,"env":{"CLAUDE_CODE_EFFORT_LEVEL":"low","CLAUDE_CODE_DISABLE_CLAUDE_MDS":"1","CLAUDE_CODE_DISABLE_AUTO_MEMORY":"1"}}'
 
 # --- Debug logging ---
 smart_debug() {
@@ -274,6 +281,8 @@ evaluate_command() {
       --output-format json \
       --dangerously-skip-permissions \
       --max-turns 1 \
+      --disable-slash-commands \
+      --strict-mcp-config --mcp-config '{"mcpServers":{}}' \
       --settings "$NESTED_SETTINGS" 2>/dev/null) || true
   else
     # No timeout available — rely on hook's own timeout
@@ -282,6 +291,8 @@ evaluate_command() {
       --output-format json \
       --dangerously-skip-permissions \
       --max-turns 1 \
+      --disable-slash-commands \
+      --strict-mcp-config --mcp-config '{"mcpServers":{}}' \
       --settings "$NESTED_SETTINGS" 2>/dev/null) || true
   fi
 

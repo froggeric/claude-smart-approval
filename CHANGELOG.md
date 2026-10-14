@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Nested classifier sessions are pinned against global settings.** Every nested `claude -p` reads `~/.claude/settings.json` at startup, so a user-level `CLAUDE_CODE_EFFORT_LEVEL=max` or `ultracode: true` was applying to the classifier: slower evaluations, more of them blowing the hook's 30-second ceiling (surfacing as constant native prompts), and workflow planning attempts inside a `--max-turns 1` call. The invocation now passes `--settings` with hooks disabled, ultracode off and effort pinned low. `eval-prompt.sh` is pinned identically, so prompt scores measure the production invocation.
+- **The nested session is stripped to the classifier's job.** `--disable-slash-commands` keeps skills and commands out of its context; `--strict-mcp-config` with an empty `--mcp-config` prevents every MCP server (plugin ones included) from spawning; `CLAUDE_CODE_DISABLE_CLAUDE_MDS` and `CLAUDE_CODE_DISABLE_AUTO_MEMORY` drop CLAUDE.md and auto-memory files from each evaluation (a project CLAUDE.md is kilobytes of irrelevant context per classified command). `--bare` would cover all of this in one flag but never reads OAuth or keychain credentials — the 2.1.0 auth break — so this flag set keeps every auth path working.
 - **The Stage 1 log records allow decisions too** (`"decision":"allow"`, `"type":"compound"`); it is no longer deny-only.
 
 ### Docs
