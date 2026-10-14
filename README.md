@@ -210,7 +210,7 @@ echo '{"tool_input":{"command":"ls | grep foo"}}' | ./auto-approve.sh --debug
 <details>
 <summary>Tests</summary>
 
-194 of them, and CI runs them on every push. You'll need [BATS](https://bats-core.readthedocs.io/):
+211 of them. Run CI manually from the Actions tab; the push trigger is currently inert. You'll need [BATS](https://bats-core.readthedocs.io/):
 
 ```bash
 bats test/
@@ -235,4 +235,4 @@ The security prompt was chosen by test, not by feel: 47 cases across 7 categorie
 
 ## Credits
 
-Built on [claude-code-auto-approve](https://github.com/oryband/claude-code-auto-approve) by Ory Band, via [claude-code-plus](https://github.com/AbdelrahmanHafez/claude-code-plus) by Abdelrahman Hafez. The move to `PermissionRequest` began with [v-ivoronin's fork](https://github.com/v-ivoronin/claude-smart-approval); their Windows fixes, the auth fix and the recursion guard are all in here, with the decision schema corrected to the documented form. Since then: deny rules inside compounds, settings layers, env stripping, the model tier, auto-learning, and a 194-test suite.
+Built on [claude-code-auto-approve](https://github.com/oryband/claude-code-auto-approve) by Ory Band, via [claude-code-plus](https://github.com/AbdelrahmanHafez/claude-code-plus) by Abdelrahman Hafez. The move to `PermissionRequest` began with [v-ivoronin's fork](https://github.com/v-ivoronin/claude-smart-approval); their Windows fixes, the auth fix and the recursion guard are all in here, with the decision schema corrected to the documented form. Since then: deny rules inside compounds, settings layers, env stripping, the model tier, auto-learning, and a 211-test suite.
